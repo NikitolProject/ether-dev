@@ -3,6 +3,7 @@ from os import name
 
 import discord
 from discord import guild
+from discord import colour
 
 from discord_components import Button, ButtonStyle, Interaction
 
@@ -339,6 +340,22 @@ class ServerSetup(BasicCog, name='server_setup'):
                     history_nods=[],
                     history_supports=[]
                 )
+                RatingClans(
+                    clan_id=str(Clans.get(ether_id=str(ether._id))._id),
+                    token=ether.token,
+                    name=ether.name,
+                    invite_link=str(invite_link),
+                    channel_statistics_id=str(channel_statistics.id),
+                    msg_statistics_id=str(msg_statistics.id),
+                    guild=str(f_interaction.guild.id),
+                    members=[str(f_interaction.user.id)],
+                    supports=[],
+                    members_count="1",
+                    total_exp="0",
+                    clan_rate="0",
+                    last_list=[]
+                )
+
                 orm.commit()
                 print("Created!")
             print(5)
@@ -389,7 +406,7 @@ class ServerSetup(BasicCog, name='server_setup'):
                 id=f_interaction.user.id, 
                 send_msg=False
             )
-
+            print(9)
             created_clan: Clans = Clans.get(owner_clan=str(ether.owner_id))
             await self.bot.get_cog('clans').update_top_members_in_clan(search=created_clan)
 
@@ -413,15 +430,15 @@ class ServerSetup(BasicCog, name='server_setup'):
                 channel=channel_logs
             )
 
-            update_ether: Ethers = Ethers.get(id=ether._id)
+            update_ether: Ethers = Ethers.get(_id=ether._id)
             channel_cities = self.bot.get_channel(ether_city_channels['cities'])
             await send_embed(
                 title=f'{created_clan.name}',
                 text=f'Ethers: {self.bot.get_user(int(created_clan.owner_clan)).mention}\nLink: {created_clan.invite_link}',
                 color=INVISIBLE_COLOR,
-                channel=channel_cities
-            
+                channel=channel_cities       
             )
+            print(10)
             for clan in Clans.select(lambda c: not c.frozen):
                 try:
                     if clan._id == int(update_ether._id_clan):

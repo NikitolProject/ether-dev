@@ -49,10 +49,11 @@ class ClansCog(BasicCog, name='clans'):
     def __init__(self: "ClansCog", bot: commands.Bot) -> None:
         super().__init__(bot)
         self._clan_statistics.start()
+        self._update_clan_nods.start()
         self._random_token_reward.start()
     
     @classmethod
-    async def update_top_members_in_clan(cls, search = None) -> None:
+    async def update_top_members_in_clan(cls: "ClansCog", search: Clans = None) -> None:
         """
         Updating the list of clan members in the database, sorting by rating
         """
@@ -92,8 +93,7 @@ class ClansCog(BasicCog, name='clans'):
                 members_rating_string_array.append(
                     f'{key["id"]}:{key["exp"]}:{key["rank"]}'
                 )
-
-            clan = Clans.get(id=clan.id)
+            
             clan.members_rating = members_rating_string_array
             orm.commit()
 
@@ -112,6 +112,7 @@ class ClansCog(BasicCog, name='clans'):
                 members = clan.nods
                 members.append(clan.owner_clan)
                 clan_exp = await cls.__getting_exp_clan(cls, members)
+                members.remove(clan.owner_clan)
 
                 clans.update({clan.token: clan_exp})
                 clan.total_exp = str(clan_exp)
@@ -143,6 +144,16 @@ class ClansCog(BasicCog, name='clans'):
                     rating: RatingClans = RatingClans.get(token=i)
                     rating.clan_rate = str(int(list(sorted_dict).index(i)) + 1)
                     rating.total_exp = str(sorted_dict[i])
+
+    @tasks.loop(seconds=30)
+    async def _update_clan_nods(self: "ClansCog") -> None:
+        await self._log(
+            "Update count clan nods"
+        )
+        with orm.db_session:
+            for clan in Clans.select(lambda c: not c.frozen):
+                nods = list(set(clan.nods))
+                clan.nods = nods
 
     @tasks.loop(minutes=5)
     async def _clan_statistics(self: "ClansCog") -> None:
@@ -210,19 +221,19 @@ class ClansCog(BasicCog, name='clans'):
         await self._log(
             f'Counting the number of clan members/assistants {clan.name}.'
         )
-
-        for member in clan.nods:
-            with contextlib.suppress(Exception):
-                member: discord.User = self.bot.get_user(int(member))
-                members.append(member.mention) if not _id else members.append(int(member.id))
-                count += 1
-
-        for support in clan.supports:
-            with contextlib.suppress(Exception):
-                support: discord.User = self.bot.get_user(int(support))
-                if support.mention not in members:
+        with orm.db_session:
+            for member in clan.nods:
+                with contextlib.suppress(Exception):
+                    member: discord.User = self.bot.get_user(int(member))
+                    members.append(member.mention) if not _id else members.append(int(member.id))
                     count += 1
-                supports.append(support.mention) if not _id else members.append(int(support.id))
+
+            for support in clan.supports:
+                with contextlib.suppress(Exception):
+                    support: discord.User = self.bot.get_user(int(support))
+                    if support.mention not in members:
+                        count += 1
+                    supports.append(support.mention) if not _id else members.append(int(support.id))
 
         return members, supports, count
 
@@ -277,7 +288,7 @@ class ClansCog(BasicCog, name='clans'):
                 clan.vault1
             ]
             if new_list != rating.last_list:
-                await self.__success_refresh()
+                await self.__success_refresh(f_interaction, rating, clan, vault0_tokens, new_list)
                 return None
 
             clan_refresh_uses = self.refresh_uses.get(clan.token)
@@ -313,8 +324,8 @@ class ClansCog(BasicCog, name='clans'):
 
     async def __success_refresh(
         self: "ClansCog", f_interaction, 
-        rating: dict, clan: dict,
-        vault0_tokens: int, new_list: list
+        rating: RatingClans, clan: Clans,
+        vault0_tokens: float, new_list: list
     ) -> None:
         await send_interaction_respond(
             f_interaction, discord.Embed(
@@ -331,8 +342,8 @@ class ClansCog(BasicCog, name='clans'):
                         f"**City XP**: {rating.total_exp}\n"
                         f"**DC**: {rating.members_count}\n"
                         f"**Vault0**: {vault0_tokens} ECT\n"
-                        f"**Vault1**: {clan['vault1']} ECT\n"
-                        f"**Vaults**: {vault0_tokens + clan['vault1']} ECT\n"
+                        f"**Vault1**: {clan.vault1} ECT\n"
+                        f"**Vaults**: {vault0_tokens + float(clan.vault1)} ECT\n"
                         f"**Battles count**: *soon*\n"
                         f"**Earned from battles**: *soon*\n\n\n\n"
                         f"You can update stats by clicking on the 'Refresh' button below.\n"
@@ -341,7 +352,7 @@ class ClansCog(BasicCog, name='clans'):
         )
         rating.last_list = new_list
         member: Members = Members.get(id=str(f_interaction.user.id))
-        member.tokens = str(int(member.tokens) + 1)
+        member.tokens = str(float(member.tokens) + 1)
         TransactionMain(
             type="refresh_reward",
             date=datetime.datetime.now(),
@@ -414,6 +425,7 @@ class ClansCog(BasicCog, name='clans'):
                         await self.__user_selection(
                             nods, _clan, key, value
                         )
+                        nods.remove(_clan.owner_clan)
 
     async def __user_selection(
         self: "ClansCog", nods: list, _clan: Clans, 
@@ -451,6 +463,17 @@ class ClansCog(BasicCog, name='clans'):
                 )
                 orm.commit()
                 break
+
+    @_update_clan_nods.before_loop
+    async def before_update_clan_nods(self: "ClansCog") -> None:
+        """
+        Initialization of the update_clan_nods event
+        """
+        await self._log(
+            'Initialization of the update_clan_nods event'
+        )
+
+        await self.bot.wait_until_ready()
 
     @_clan_statistics.before_loop
     async def _before_clan_statistics(self) -> None:
@@ -843,12 +866,12 @@ class ClansCog(BasicCog, name='clans'):
             )
             owner_clan: Member = self.bot.get_user(int(clan.owner_clan))
 
-            clan.nods += f",{member.id}"
+            clan.nods.append(str(member.id))
             clan.vault0.append(f"{f_interaction.user.id}:{5}:{0}")
 
             mem: Members = Members.get(id=str(f_interaction.user.id))
-            mem.clans_id += f",{clan._id}"
-            mem.tokens = str(int(mem.tokens) - 5)
+            mem.clans_id.append(str(clan._id))
+            mem.tokens = str(float(mem.tokens) - 5)
 
             if not mem.nods_status:
                 mem.nods_status = True

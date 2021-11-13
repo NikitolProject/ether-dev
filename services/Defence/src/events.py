@@ -458,6 +458,10 @@ class Defence(BasicCog, name='defence'):
         """
         Event processing user update, checking for roles
         """
+        await self._log(
+            f"user {after.mention} update, checking for roles"
+        )
+
         if before.roles == after.roles:
             return None
         
@@ -465,12 +469,16 @@ class Defence(BasicCog, name='defence'):
         add_roles = list(set(after.roles) - set(before.roles))
 
         with orm.db_session:
-            for role in roles + add_roles:
-                m_guild: Guilds = Guilds.get(id=str(role.guild.id))
-                
-                if m_guild is None or m_guild.frozen:
+            m_guild: Guilds = Guilds.get(id=str(role.guild.id))
+
+            if int(m_guild.id) == discord_config["server_main"]:
+                return None
+
+            if m_guild is None and m_guild.frozen and m_guild.role_ether is None \
+                    and m_guild.role_nods is None or m_guild.main_server:
                     return None
 
+            for role in roles + add_roles:
                 if role.id == int(m_guild.role_ether) and role.guild.get_role(role.id) is not None:
                     member: Members = Members.get(id=str(after.id))
                     if member.ether_status:

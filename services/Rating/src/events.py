@@ -59,8 +59,6 @@ class Rating(BasicCog, name='rating'):
         """
         Event receiving messages from users, accrues experience
         """
-        await self._log('start event receiving messages from users, accrues experience')
-
         if message.channel.type == discord.ChannelType.private:
             return None
 
@@ -88,6 +86,53 @@ class Rating(BasicCog, name='rating'):
 
         await self.__new_lvl(user._id)
 
+    async def __new_lvl(self: "Rating", id: int, send_msg: bool = True) -> None:
+        """
+        User Level increase
+        """
+        check, token, free_exp = await self.check_rank_lvl(id)
+
+        if not check:
+            return None
+
+        with orm.db_session:
+            user: Members = Members.get(id=str(id))
+            user.exp_rank = "0" if free_exp is None else str(free_exp)
+            user.exp_all = str(int(user.exp_all) - free_exp)
+            user.lvl_rank = str(int(user.lvl_rank) + 1)
+            user.tokens = str(float(user.tokens) + float(token))
+
+        await send_log_channel(
+            title='Level up',
+            text=f'Member: {self.bot.get_user(int(user.id)).mention}\nNew lvl: '
+                f'`{user.lvl_rank}`\nECT: `{str(token)}`',
+            bot=self.bot
+        )
+
+        if send_msg:
+            await send_embed(
+                title='Level up',
+                text=f'Your new lvl is {user.lvl_rank}',
+                color=GREEN_COLOR,
+                member=self.bot.get_user(int(user.id))
+            )
+
+        with orm.db_session:
+            TransactionMain(
+                type='lvl_up',
+                date=datetime.now(),
+                user_id=user.id,
+                get_tokens=str(token),
+                new_lvl=user.lvl_rank
+            )
+
+        await self._log(
+            'lvl up:', user.id, user.name, 
+            'lvl up to', user.lvl_rank, ' token give:',
+            ' ', str(round(token))
+        )
+        await self.__new_lvl(id)
+
     async def __check_return_exp(
         self: "Rating", ctx: commands.Context, _id: int
     ) -> ty.Union[int, None]:
@@ -100,15 +145,15 @@ class Rating(BasicCog, name='rating'):
 
         if guild.frozen:
             return None
-    
+
         if ctx.guild.id == discord_config['server_main'] and \
             ctx.channel.id == ether_city_channels['vi1-everyone']:
             return 10
 
         with contextlib.suppress(Exception):
             if category is not None and _id == int(category.owner_clan) or \
-                 _id in category.nods.split(',') and \
-                      ctx.channel.id == category.channel_engage_id:
+                 _id in category.nods and \
+                      str(ctx.channel.id) == str(category.channel_engage_id):
                         return 10
 
 

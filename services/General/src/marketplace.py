@@ -366,6 +366,7 @@ class Marketplace(BasicCog, name='marketplace'):
             member: Members = Members.get(
                 id=str(f_interaction.user.id),
             )
+            print(1)
 
             if float(member.tokens) < 15:
                 await f_interaction.respond(

@@ -14,18 +14,18 @@ from .database import *
 class Buttons(BasicCog, name='buttons'):
 
     used_button_users = {}
-    user_bans = set()
+    user_bans = []
 
-    user_used = set()
-    used_button = set()
+    user_used = []
+    used_button = []
 
-    used_join = set()
-    used_button_transfer = set()
-    used_create_city = set()
-    used_top_up = set()
-    used_local = set()
-    used_global = set()
-    used_market = set()
+    used_join = []
+    used_button_transfer = []
+    used_create_city = []
+    used_top_up = []
+    used_local = []
+    used_global = []
+    used_market = []
 
     def __init__(self: "Buttons", bot: commands.Bot) -> None:
         super().__init__(bot)
@@ -56,8 +56,10 @@ class Buttons(BasicCog, name='buttons'):
             if interaction.guild.id != discord_config['server_main']:
                 with orm.db_session:
                     clan: Clans = Clans.get(**{mo_channel: interaction.channel.id})
-                if clan is not None and interaction.user.id not in clan['nods'] and interaction.user.id != clan['owner_clan']:
-                            return False
+
+                if clan is not None and str(interaction.user.id) not in clan.nods and str(interaction.user.id) != clan.owner_clan:
+                    return False
+                
                 return True
         return False
 
@@ -99,7 +101,7 @@ class Buttons(BasicCog, name='buttons'):
             self.used_button_users.update({interaction.user.id: [interaction.component.label] + [1]})
         elif user[0] == interaction.component.label:
             if user[1] >= 10:
-                self.user_bans.add(interaction.user.id)
+                self.user_bans.append(interaction.user.id)
                 await send_interaction_respond(
                     interaction, discord.Embed(
                         description='You\'ve exceeded the amount of attempts (10). 15 min. cooldown is applied.',
@@ -180,8 +182,8 @@ class Buttons(BasicCog, name='buttons'):
                 if interaction.user.id not in self.used_button_transfer:
                     if not await self.check_member_in_clan(interaction, 'channel_wallet_id'):
                         try:
-                            self.user_used.add(interaction.user.id)
-                            self.used_button_transfer.add(interaction.user.id)
+                            self.user_used.append(interaction.user.id)
+                            self.used_button_transfer.append(interaction.user.id)
                             stat = await self.bot.get_cog('clans').tokens_transfer(interaction)
                             self.user_used.remove(interaction.user.id)
                             if stat:
@@ -196,7 +198,7 @@ class Buttons(BasicCog, name='buttons'):
             if interaction.user.id not in self.used_create_city:
                 if interaction.user == interaction.guild.owner:
                     try:
-                        self.used_create_city.add(interaction.user.id)
+                        self.used_create_city.append(interaction.user.id)
                         stat = await self.bot.get_cog('server_setup').create_city(interaction)
                         if stat is None:
                             await asyncio.sleep(600)
@@ -210,8 +212,8 @@ class Buttons(BasicCog, name='buttons'):
                 if interaction.user.id not in self.used_join:
                     if await self.check_member_in_clan(interaction, 'channel_join_id') == 0:
                         try:
-                            self.user_used.add(interaction.user.id)
-                            self.used_join.add(interaction.user.id)
+                            self.user_used.append(interaction.user.id)
+                            self.used_join.append(interaction.user.id)
                             stat = await self.bot.get_cog('clans').join_to_clan(interaction)
                             self.user_used.remove(interaction.user.id)
                             if stat is None:
@@ -227,8 +229,8 @@ class Buttons(BasicCog, name='buttons'):
                 if interaction.user.id not in self.used_top_up:
                     if not await self.check_member_in_clan(interaction, 'channel_wallet_id'):
                         try:
-                            self.user_used.add(interaction.user.id)
-                            self.used_top_up.add(interaction.user.id)
+                            self.user_used.append(interaction.user.id)
+                            self.used_top_up.append(interaction.user.id)
                             stat = await self.bot.get_cog('clans').top_up(interaction)
                             self.user_used.remove(interaction.user.id)
                             if stat:
@@ -278,8 +280,8 @@ class Buttons(BasicCog, name='buttons'):
                 if interaction.user.id not in self.used_local:
                     if not await self.check_member_in_clan(interaction, 'channel_marketplace_id'):
                         try:
-                            self.user_used.add(interaction.user.id)
-                            self.used_local.add(interaction.user.id)
+                            self.user_used.append(interaction.user.id)
+                            self.used_local.append(interaction.user.id)
                             stat = await self.bot.get_cog('marketplace').market_local_button(interaction)
                             self.user_used.remove(interaction.user.id)
                             if stat:
@@ -295,8 +297,8 @@ class Buttons(BasicCog, name='buttons'):
                 if interaction.user.id not in self.used_global:
                     if not await self.check_member_in_clan(interaction, 'channel_marketplace_id'):
                         try:
-                            self.user_used.add(interaction.user.id)
-                            self.used_global.add(interaction.user.id)
+                            self.user_used.append(interaction.user.id)
+                            self.used_global.append(interaction.user.id)
                             stat = await self.bot.get_cog('marketplace').market_global_button(interaction)
                             self.user_used.remove(interaction.user.id)
                             if stat:

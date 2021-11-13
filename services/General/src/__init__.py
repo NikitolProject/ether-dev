@@ -45,11 +45,11 @@ class BasicCog(commands.Cog):
         self.bot = bot
 
     async def _log(self: "BasicCog", message: str, *args: tuple) -> None:
-        message += ' ' + ' '.join(args)
+        message += ' ' + ' '.join([str(idx) for idx in args])
         self.logger.info(message)
         print(message)
 
     async def _error(self: "BasicCog", message: str, *args) -> None:
-        message += ' ' + ' '.join(args)
+        message += ' ' + ' '.join([str(idx) for idx in args])
         self.logger.error(message)
         print(message)
