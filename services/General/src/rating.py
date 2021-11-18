@@ -125,7 +125,7 @@ class Rating(BasicCog, name='rating'):
         with orm.db_session:
             user: Members = Members.get(id=str(id))
             user.exp_rank = "0" if free_exp is None else str(free_exp)
-            user.exp_all = str(int(user.exp_all) - free_exp)
+            user.exp_all = str(int(user.exp_all) + free_exp)
             user.lvl_rank = str(int(user.lvl_rank) + 1)
             user.tokens = str(float(user.tokens) + float(token))
 

@@ -72,7 +72,7 @@ class ClansCog(BasicCog, name='clans'):
             with contextlib.suppress(Exception):
                 await cls.__sorted_users_in_clan(cls, clan)
 
-    async def __sorted_users_in_clan(self: "ClansCog", clan: Clans) -> None:
+    async def  __sorted_users_in_clan(self: "ClansCog", clan: Clans) -> None:
         members_rating: list = []
         members_rating_string_array: list = []
         members_to_sort: list = clan.nods
