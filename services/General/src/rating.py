@@ -26,8 +26,8 @@ class Rating(BasicCog, name='rating'):
     limit: int = 50
     limit_minutes_time: int = 1440
 
-    def __init__(self: "Rating", bot: commands.Bot) -> None:
-        super().__init__(bot)
+    def __init__(self: "BasicCog", bot: commands.Bot) -> None:
+        super().__init__(bot)  
         self.check_daily_exp_limit.start()
 
     @tasks.loop(minutes=1)
@@ -38,9 +38,12 @@ class Rating(BasicCog, name='rating'):
         with orm.db_session:
             for member in Members.select(lambda m: int(m.daily_exp_msg_limit_time) == 0):
                 member.daily_exp_msg_limit = str(self.limit)
+                member.daily_exp_msg_limit_time = str(self.limit_minutes_time)
+                orm.commit()
 
             for member in Members.select(lambda m: int(m.daily_exp_msg_limit_time) > 0):
                 member.daily_exp_msg_limit_time = str(int(member.daily_exp_msg_limit_time) - 1)
+                orm.commit()
 
         t = datetime.now()
         if '%s:%s' % (t.hour, t.minute) == '15:5':
@@ -50,9 +53,8 @@ class Rating(BasicCog, name='rating'):
     @check_daily_exp_limit.before_loop
     async def before_check_daily_exp_limit(self: "Rating") -> None:
         """
-        Initializing the event check_daily_exp_limit
+        Start updates to the daily exp limit time indicator, counts the time until the cooldown is completed
         """
-        await self._log('start check daily exp limit')
         await self.bot.wait_until_ready()
 
     async def check_rank_lvl(
@@ -94,7 +96,7 @@ class Rating(BasicCog, name='rating'):
 
             if int(user.exp_rank) >= int(def_exp):
                 await self._log(
-                    f'check rank lvl: user.id, user.name\n'
+                    f'check rank lvl: {user.id}, {user.name}\n'
                     f'coefficient: {coefficient}, def_exp: {def_exp}\n'
                     f'status: T, lvl up'
                 )

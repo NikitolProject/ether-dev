@@ -32,7 +32,7 @@ class Marketplace(BasicCog, name='marketplace'):
 
             try:
                 rarity, do_message = await get_rarity(data)
-                self._log(rarity, do_message)
+                await self._log(rarity, do_message)
                 if rarity is not None:
                     rarity_text = f"\n· Rarity: **{rarity[0]}/{rarity[1]}(Score {float_round(float(rarity[2]), 2)})**\n"
 
@@ -175,7 +175,7 @@ class Marketplace(BasicCog, name='marketplace'):
             )
 
             data, link = await self.check_link(f_interaction)
-    
+
             if data is None or not data:
                 return None
 
@@ -195,8 +195,10 @@ class Marketplace(BasicCog, name='marketplace'):
                     member: Members = Members.get(
                         id=str(f_interaction.user.id),
                     )
+                    print(1)
                     member.exp_rank = str(int(member.exp_rank) + 15)
-                    member.total_count_sends_mark_local = str(int(member.total_count_sends_mark_local) + 1)
+                    member.total_count_sends_mark_local = "1" if not member.total_count_sends_mark_local else str(int(member.total_count_sends_mark_local) + 1)
+                    print(2)
 
                     try:
                         local_msg = await f_interaction.channel.send(
@@ -219,7 +221,7 @@ class Marketplace(BasicCog, name='marketplace'):
                             user_id=str(f_interaction.user.id),
                             to_channel=str(f_interaction.channel.id),
                             msg_id=str(local_msg.id),
-                            from_clan=str(clan.id),
+                            from_clan=str(clan._id),
                             link=link,
                             date=str(datetime.now()),
                         )
@@ -228,10 +230,11 @@ class Marketplace(BasicCog, name='marketplace'):
                             'send local marketplace: ', f_interaction.user.id,
                              f_interaction.user.name, 'clan: ', clan.token
                         )
-                        await self.bot.get_cog('rating').new_lvl(member._id)
+                        await self.bot.get_cog('rating').new_lvl(member.id)
                         return True
 
-                    except Exception:
+                    except Exception as e:
+                        await self._error(str(e))
                         await send_embed(
                             title='Unexpected Error',
                             text='The marketplace is disconnected. Can\'t publish.',
@@ -245,10 +248,11 @@ class Marketplace(BasicCog, name='marketplace'):
             member: Members = Members.get(
                 id=str(f_interaction.user.id),
             )
-            member.tokens = str(int(member.tokens) - 15)
-            member.total_costs_for_mark_global = str(int(member.total_costs_for_mark_global) + 15)
-            member.total_count_sends_mark_local = str(int(member.total_count_sends_mark_local) + 1)
+            member.tokens = str(float(member.tokens) - 15.0)
+            member.total_costs_for_mark_global = "15" if not member.total_costs_for_mark_global else str(int(member.total_costs_for_mark_global) + 15)
+            member.total_count_sends_mark_local = "1" if not member.total_count_sends_mark_local else str(int(member.total_count_sends_mark_local) + 1)
             member.exp_rank = str(int(member.exp_rank) + 25)
+            orm.commit()
 
             total_exp = 0
             clan_list = []
@@ -260,6 +264,7 @@ class Marketplace(BasicCog, name='marketplace'):
             for clan in Clans.select(lambda c: not c.frozen):
                 if int(clan.channel_marketplace_id) != f_interaction.channel.id:
                     total_exp += int(clan.total_exp)
+            orm.commit()
 
             for clan in Clans.select(lambda c: not c.frozen):
                 try:
@@ -271,8 +276,8 @@ class Marketplace(BasicCog, name='marketplace'):
                         clan_cash = 15 * clan_pros / 100
 
                         clan.vault1 = str(int(clan.vault1) + int(clan_cash))
-                        clan.total_income_from_mark_global = str(int(clan.total_income_from_mark_global) + int(clan_cash))
-
+                        clan.total_income_from_mark_global = str(clan_cash) if not clan.total_income_from_mark_global else str(int(clan.total_income_from_mark_global) + int(clan_cash))
+                        orm.commit()
                     components = [
                         [
                             Button(style=ButtonStyle.URL, url=link, label='Link'),
@@ -309,6 +314,7 @@ class Marketplace(BasicCog, name='marketplace'):
                             received_tokens=str(clan_cash),
                             new_vault1=clan.vault1,
                         )
+                        orm.commit()
 
                 except Exception as e:
                     await self._error(
@@ -350,9 +356,10 @@ class Marketplace(BasicCog, name='marketplace'):
                 clan_list=clan_list,
                 msg_list=msg_list
             )
+            orm.commit()
 
             await self.bot.get_cog('rating').new_lvl(
-                Members.get(id=str(f_interaction.user.id))._id
+                f_interaction.user.id
             )
 
             await self._log('send global marketplace: ', f_interaction.user.id, f_interaction.user.name)
@@ -393,7 +400,7 @@ class Marketplace(BasicCog, name='marketplace'):
                 try:
                     msg_interaction = await self.bot.wait_for(
                         'button_click', timeout=120,
-                        Check=lambda m: m.author == f_interaction.user and m.channel.type == discord.ChannelType.private and m.message == msg
+                        check=lambda m: m.author == f_interaction.user and m.channel.type == discord.ChannelType.private and m.message == msg
                     )
                 except asyncio.TimeoutError:
                     await timeout_error(f_interaction.user)
@@ -428,7 +435,7 @@ class Marketplace(BasicCog, name='marketplace'):
 
                     if _msg_interaction.component.label == 'Accept':
                         await invisible_respond(_msg_interaction)
-                        if int(Members.get(id=str(f_interaction.user.id)).tokens) >= 15:
+                        if float(Members.get(id=str(f_interaction.user.id)).tokens) >= 15:
                             return await self.__success_send(f_interaction, link, emb)
 
                         errors: int = 1
@@ -460,7 +467,7 @@ class Marketplace(BasicCog, name='marketplace'):
                             
                             if retry_msg_interaction.component.label == 'Retry':
                                 await invisible_respond(retry_msg_interaction)
-                                if int(Members.get(id=str(f_interaction.user.id)).tokens) >= 15:
+                                if float(Members.get(id=str(f_interaction.user.id)).tokens) >= 15:
                                     await retry_msg.delete()
                                     return await self.__success_send(f_interaction, link, emb)
 

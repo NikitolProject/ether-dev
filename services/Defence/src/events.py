@@ -5,7 +5,7 @@ import typing as ty
 import discord
 
 from discord import Guild, Role, TextChannel
-from discord.ext import commands
+from discord.ext import commands, tasks
 
 from . import *
 from .utils import *
@@ -19,6 +19,8 @@ class Defence(BasicCog, name='defence'):
 
     def __init__(self: "Defence", bot: commands.Bot) -> None:
         self.bot: commands.Bot = bot
+        self.check_members_roles.start()
+
         self.func_system_list = {
             'system_ch_category': self.city_setup_category_re_create,
             'system_ch_city_setup': self.city_setup_re_create,
@@ -35,6 +37,26 @@ class Defence(BasicCog, name='defence'):
             'channel_help_id': self.c_help_re_create,
             'channel_voice_id': self.voice_re_create
         }
+
+    @tasks.loop(minutes=1)
+    async def check_members_roles(self: "Defence") -> None:
+        """
+        Checking the members of the guilds
+        """
+        for guild in self.bot.guilds:
+            if await self.check_bot_admin_perm(guild):
+                await self.bot.get_cog('rating').check_members_guild(guild)
+
+    @check_members_roles.before_loop
+    async def before_check_members_roles(self: "Defence") -> None:
+        """
+        Waiting for the bot to be ready
+        """
+        await self._log(
+            'Check members roles started',
+        )
+
+        await self.bot.wait_until_ready()
 
     async def check_bot_admin_perm(self: "Defence", guild: Guild) -> ty.Union[bool, None]:
         """
@@ -469,7 +491,7 @@ class Defence(BasicCog, name='defence'):
         add_roles = list(set(after.roles) - set(before.roles))
 
         with orm.db_session:
-            m_guild: Guilds = Guilds.get(id=str(role.guild.id))
+            m_guild: Guilds = Guilds.get(id=str(after.guild.id))
 
             if int(m_guild.id) == discord_config["server_main"]:
                 return None

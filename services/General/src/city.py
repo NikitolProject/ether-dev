@@ -229,14 +229,14 @@ class ServerSetup(BasicCog, name='server_setup'):
             check_busy.names.append(f"{str(f_interaction.user.id)}.{name.lower()}")
             check_busy.tokens.append(f"{str(f_interaction.user.id)}.{token}")
             check_busy.incs = token
-
+            print(11)
             if not Members.get(id=str(f_interaction.user.id)).ether_status:
                 Members.get(id=str(f_interaction.user.id)).ether_status = True
 
-                await self.bot.get_cog('rating').check_status(
-                    f_interaction.guild.get_member(f_interaction.user.id)
-                )
-
+                # await self.bot.get_cog('rating').check_status(
+                #     f_interaction.guild.get_member(f_interaction.user.id)
+                # )
+            print(22)
             await self.create_clan(f_interaction, ether)
 
     async def create_clan(self: "ServerSetup", f_interaction: Interaction, ether: Ethers) -> None:

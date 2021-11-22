@@ -1,3 +1,4 @@
+from sys import int_info
 import time
 
 import random
@@ -77,6 +78,7 @@ class ClansCog(BasicCog, name='clans'):
         members_rating_string_array: list = []
         members_to_sort: list = clan.nods
         members_to_sort.append(clan.owner_clan)
+        members_to_sort = list(set(members_to_sort))
 
         with orm.db_session:
             for member in members_to_sort:
@@ -94,7 +96,7 @@ class ClansCog(BasicCog, name='clans'):
                     f'{key["id"]}:{key["exp"]}:{key["rank"]}'
                 )
             
-            clan.members_rating = members_rating_string_array
+            clan.members_rating = list(set(members_rating_string_array))
             orm.commit()
 
     @classmethod
@@ -116,6 +118,7 @@ class ClansCog(BasicCog, name='clans'):
 
                 clans.update({clan.token: clan_exp})
                 clan.total_exp = str(clan_exp)
+                orm.commit()
 
             sorted_values = sorted(clans.values(), reverse=True)
             sorted_dict = {}
@@ -128,6 +131,7 @@ class ClansCog(BasicCog, name='clans'):
 
     async def __getting_exp_clan(self: "ClansCog", members: list) -> int:
         clan_exp: int = 0
+        members = list(set(members))
 
         with orm.db_session:
             for m in members:
@@ -152,10 +156,13 @@ class ClansCog(BasicCog, name='clans'):
         )
         with orm.db_session:
             for clan in Clans.select(lambda c: not c.frozen):
+                members_rating = list(set(clan.members_rating))
                 nods = list(set(clan.nods))
                 clan.nods = nods
+                clan.members_rating = members_rating
+                orm.commit()
 
-    @tasks.loop(minutes=5)
+    @tasks.loop(minutes=1)
     async def _clan_statistics(self: "ClansCog") -> None:
         """
         Update clan statistics and daily rewards
@@ -191,9 +198,9 @@ class ClansCog(BasicCog, name='clans'):
                         continue
 
                     rating: RatingClans = RatingClans.get(clan_id=str(clan._id))
-                    rating.members = members
-                    rating.supports = supports
-                    rating.member_count = str(count + 1)
+                    rating.members = list(set(members))
+                    rating.supports = list(set(supports))
+                    rating.members_count = str(count)
                     orm.commit()
 
                 except Exception as e:
@@ -235,7 +242,8 @@ class ClansCog(BasicCog, name='clans'):
                         count += 1
                     supports.append(support.mention) if not _id else members.append(int(support.id))
 
-        return members, supports, count
+        return list(set(members)), list(set(supports)), count
+
 
     async def stats_clan(self: "ClansCog", f_interaction: Interaction) -> None:
         """
@@ -247,14 +255,14 @@ class ClansCog(BasicCog, name='clans'):
 
         with orm.db_session:
             rating: RatingClans = RatingClans.get(
-                msg_statistics_id=f_interaction.message.id
+                msg_statistics_id=str(f_interaction.message.id)
             )
             if rating is None:
                 return None
             
-            clan: Clans = Clans.get(id=rating.clan_id)
+            clan: Clans = Clans.get(_id=rating.clan_id)
 
-            if self.refresh_bans.get(clan.token) is not None or f_interaction.user.id in self.refresh_bans[clan.token]:
+            if self.refresh_bans.get(clan.token) is not None and f_interaction.user.id in self.refresh_bans[clan.token]:
                 await f_interaction.respond(
                     embed=discord.Embed(
                         description='Being active is good. You can successfully refresh only one time per 5 hours.',
@@ -263,8 +271,8 @@ class ClansCog(BasicCog, name='clans'):
                 )
                 return None
             
-            if self.refresh_uses.get(clan.token) is not None or f_interaction.user.id in \
-                self.refresh_uses[clan.token][0].keys() or self.refresh_uses.get(clan.token)[0][f_interaction.user.id] > 5:
+            if self.refresh_uses.get(clan.token) is not None and f_interaction.user.id in \
+                self.refresh_uses[clan.token][0].keys() and self.refresh_uses.get(clan.token)[0][f_interaction.user.id] > 5:
                 await f_interaction.respond(embed=discord.Embed(
                     description='15 min. cooldown is still applied to you',
                     colour=RED_COLOR
@@ -279,14 +287,15 @@ class ClansCog(BasicCog, name='clans'):
                 return None
             
             rating: RatingClans = RatingClans.get(
-                msg_statistics_id=f_interaction.message.id
+                msg_statistics_id=str(f_interaction.message.id)
             )
-            vault0_tokens: int = sum((t.split(":")[1]) for t in clan.vault0)
+            vault0_tokens: float = sum(float(t.split(":")[1]) for t in clan.vault0)
             new_list: list = [
                 rating.clan_rate, rating.total_exp,
-                rating.members_count, vault0_tokens,
+                rating.members_count, str(vault0_tokens),
                 clan.vault1
             ]
+
             if new_list != rating.last_list:
                 await self.__success_refresh(f_interaction, rating, clan, vault0_tokens, new_list)
                 return None
@@ -323,7 +332,7 @@ class ClansCog(BasicCog, name='clans'):
             orm.commit()
 
     async def __success_refresh(
-        self: "ClansCog", f_interaction, 
+        self: "ClansCog", f_interaction: Interaction, 
         rating: RatingClans, clan: Clans,
         vault0_tokens: float, new_list: list
     ) -> None:
@@ -355,15 +364,16 @@ class ClansCog(BasicCog, name='clans'):
         member.tokens = str(float(member.tokens) + 1)
         TransactionMain(
             type="refresh_reward",
-            date=datetime.datetime.now(),
-            clan=clan._id,
-            user_id=str(f_interaction.user.id),
-            tokens="1"
+            date=datetime.now(),
+            clan=str(clan._id),
+            client=str(f_interaction.user.id),
+            sum="1"
         )
+        orm.commit()
 
         with contextlib.suppress(Exception):
-            await f_interaction.message.edit(embed=emb)
-            channel = f_interaction.guild.get_channel(clan['channel_logs_id'])
+            await f_interaction.respond(embed=emb)
+            channel = f_interaction.guild.get_channel(int(clan.channel_logs_id))
             await send_embed(
                 text=f'{f_interaction.user.mention} just updated our stats and won 1 ECT\n',
                 color=BLUE_COLOR,
@@ -505,31 +515,33 @@ class ClansCog(BasicCog, name='clans'):
         )
 
         with orm.db_session:
-            for rate in range(1, 11):
-                with contextlib.suppress(Exception):
-                    clan: Clans = Clans.get(
-                        _id=RatingClans.get(clan_rate=rate).clan_id
-                    )
-                    clan.vault1 = str(int(clan.vault1) + reward_clans[rate])
+            rating: list = RatingClans.select().order_by(
+              lambda r: desc(int(r.clan_rate))
+            )[:10]
 
-                    TransactionMain(
-                        type="vault1_reward",
-                        date=datetime.datetime.now(),
-                        clan=clan._id,
-                        received_tokens=reward_clans[rate],
-                        rate=rate,
-                        mew_vault1=Clans.get(
-                            _id=RatingClans.get(clan_rate=rate).clan_id
-                        ).vault1
-                    )
+            for rate in rating:
+                clan: Clans = Clans.get(
+                    _id=int(rate.clan_id)
+                )
+                clan.vault1 = str(int(clan.vault1) + reward_clans[int(rate.clan_rate)])
 
-                    await send_embed(
-                        title='Vault1 top up (TOP 10)',
-                        text=f'Our place is #{rate}\nWe earned {reward_clans[rate]} ECT',
-                        color=BLUE_COLOR,
-                        channel=self.bot.get_channel(clan.channel_logs_id))
+                TransactionMain(
+                    type="vault1_reward",
+                    date=datetime.now(),
+                    clan=str(clan._id),
+                    received_tokens=str(reward_clans[int(rate.clan_rate)]),
+                    rate=rate.clan_rate,
+                    vault1=clan.vault1
+                )
 
-                    await asyncio.sleep(1)
+                await send_embed(
+                    title='Vault1 top up (TOP 10)',
+                    text=f'Our place is #{rate.clan_rate}\nWe earned {reward_clans[int(rate.clan_rate)]} ECT',
+                    color=BLUE_COLOR,
+                    channel=self.bot.get_channel(int(clan.channel_logs_id))
+                )
+
+                await asyncio.sleep(1)
 
             orm.commit()
 
@@ -545,38 +557,40 @@ class ClansCog(BasicCog, name='clans'):
 
         with orm.db_session:
             for clan in Clans.select(lambda c: not c.frozen):
-                with contextlib.suppress(Exception):
-                    if int(clan.vault1) < 0:
-                        continue
+                if int(clan.vault1) < 0:
+                    continue
 
-                    total_tokens: int = sum(
-                        [token.tokens for token in clan.vault0]
-                    )
+                total_tokens: float = sum(
+                    [float(token.split(":")[1]) for token in clan.vault0]
+                )
 
-                    vault1 = int(clan.valut1)
-                    for i in range(len(clan.vault0)):
-                        try:
-                            rate: int = float_round(
-                                100 / total_tokens * int(clan.valut0[i].split(":")[1]), 4
-                            )
-                            received_tokens: int = round(vault1 / 100 * rate, 9)
-                            await self.__drop_tokens_in_database(
-                                i, clan, rate, clan.valut0[i], received_tokens, vault1
-                            )
+                vault1 = int(clan.vault1)
+                clan.vault0 = list(set(clan.vault0))
+                orm.commit()
 
-                            await send_embed(
-                                title=f'Daily Drop! Drop! Drop!',
-                                text=f'+ **{received_tokens}** ECT dropped on your balance from {clan.token}. {clan.name} Vault1\n',
-                                color=BLUE_COLOR,
-                                member=self.bot.get_user(int(clan.valut0[i].split(":")[0])))
+                for i in range(len(clan.vault0)):
+                    try:
+                        rate: float = float_round(
+                            100 / total_tokens * float(clan.vault0[i].split(":")[1]), 4
+                        )
+                        received_tokens: int = round(vault1 / 100 * rate, 9)
+                        await self.__drop_tokens_in_database(
+                            i, clan, rate, clan.vault0[i], received_tokens, vault1
+                        )
 
-                        except Exception as e:
-                            await self._error(
-                                f"An error has occurred: {e}"
-                            )
+                        await send_embed(
+                            title=f'Daily Drop! Drop! Drop!',
+                            text=f'+ **{received_tokens}** ECT dropped on your balance from {clan.token}. {clan.name} Vault1\n',
+                            color=BLUE_COLOR,
+                            member=self.bot.get_user(int(clan.vault0[i].split(":")[0])))
 
-                    clan.vault1 = str(int(clan.vault1) - vault1)
-                    await asyncio.sleep(1)
+                    except Exception as e:
+                        await self._error(
+                            f"An error has occurred: {e}"
+                        )
+
+                clan.vault1 = str(int(clan.vault1) - vault1)
+                await asyncio.sleep(1)
             orm.commit()
 
     async def __drop_tokens_in_database(
@@ -585,18 +599,18 @@ class ClansCog(BasicCog, name='clans'):
     ) -> None:
         with orm.db_session:
             clan.vault0[i].split(":")[1] = str(
-                int(user.split(":")[1]) + received_tokens
+                float(user.split(":")[1]) + received_tokens
             )
-            clan.valut0[i].split(":")[2] = str(rate)
+            clan.vault0[i].split(":")[2] = str(rate)
             Members.get(id=user.split(":")[0]).tokens = str(
-                int(Members.get(id=user.split(":")[0]).tokens) + received_tokens
+                float(Members.get(id=user.split(":")[0]).tokens) + received_tokens
             )
             TransactionMain(
                 type="vault1_drop",
-                date=datetime.datetime.now(),
+                date=datetime.now(),
                 clan=str(clan._id),
                 to_user=user.split(":")[0],
-                received_tokens=received_tokens,
+                received_tokens=str(received_tokens),
                 rate=str(rate),
                 vault1=str(vault1)
             )
@@ -612,9 +626,10 @@ class ClansCog(BasicCog, name='clans'):
         )
 
         with orm.db_session:
-            rating: RatingClans = RatingClans.select().order_by(
-                desc(RatingClans.clan_rate)
-            )
+            rating: list = RatingClans.select().order_by(
+              lambda r: desc(int(r.clan_rate))
+            )[:10]
+            rating.reverse()
             embed = discord.Embed(title='Top-10 cites', colour=INVISIBLE_COLOR)
             for clan in rating:
                 embed.add_field(
@@ -624,8 +639,6 @@ class ClansCog(BasicCog, name='clans'):
                         f'Link: {clan.invite_link}',
                     inline=False
                 )
-                if clan.clan_rate == 10:
-                    break
 
         await f_interaction.respond(embed=embed)
 
@@ -640,7 +653,7 @@ class ClansCog(BasicCog, name='clans'):
         with orm.db_session:
             rating: Members = Members.select().order_by(
                 lambda m: desc(int(m.exp_all) + int(m.exp_rank))
-            )
+            )[:10]
             
             embed = discord.Embed(title='Top-10 DeCitizens', colour=INVISIBLE_COLOR)
             for i, u in enumerate(rating, start=1):
@@ -651,9 +664,6 @@ class ClansCog(BasicCog, name='clans'):
                             f'XP: **{int(u.exp_all) + int(u.exp_rank)}**\n',
                         inline=False
                     )
-
-                if i == 10:
-                    break
 
         await f_interaction.respond(embed=embed)
 
@@ -729,7 +739,16 @@ class ClansCog(BasicCog, name='clans'):
         )
 
         with orm.db_session:
-            clan: Clans = Clans.get(channel_statistics_id=str(f_interaction.channel.id))
+            clan: Clans = Clans.get(channel_join_id=str(f_interaction.channel.id))
+            member: Members = Members.get(id=str(f_interaction.user.id))
+
+            if member.clans_id and str(clan._id) in member.clans_id:
+                embed = discord.Embed(
+                    description=f'You have already joined the clan {clan.name}', 
+                    colour=RED_COLOR
+                )
+                await f_interaction.respond(embed=embed)
+                return None
 
             if float(Members.get(id=str(f_interaction.user.id)).tokens) < 5.0:
                 await f_interaction.respond(
@@ -873,6 +892,10 @@ class ClansCog(BasicCog, name='clans'):
             mem.clans_id.append(str(clan._id))
             mem.tokens = str(float(mem.tokens) - 5)
 
+            orm.commit()
+
+            mem: Members = Members.get(id=str(f_interaction.user.id))
+
             if not mem.nods_status:
                 mem.nods_status = True
 
@@ -884,6 +907,8 @@ class ClansCog(BasicCog, name='clans'):
             if str(member.id) not in clan.history_nods:
                 clan.history_nods.append(str(member.id))
                 mem.exp_rank = str(int(mem.exp_rank) + 100)
+
+            orm.commit()
 
             for guild in member.mutual_guilds:
                 guild_member = guild.get_member(member.id)
@@ -915,13 +940,14 @@ class ClansCog(BasicCog, name='clans'):
             )
 
             await self.bot.get_cog('rating').new_lvl(
-                mem._id, 
+                mem.id, 
                 send_msg=False
             )
             await self.bot.get_cog('rating').new_lvl(
-                mem._id
+                mem.id
             )
             await member.add_roles(role)
+            orm.commit()
 
         return True
 
@@ -939,12 +965,17 @@ class ClansCog(BasicCog, name='clans'):
 
                 clan: Clans = Clans.get(channel_wallet_id=str(f_interaction.channel.id)) if Clans.select().exists() else None
                 
-                description = f'ECT: {user.tokens}\nLevel: {user.lvl_rank}\nXP: {int(user.exp_all) + int(user.exp_rank)}\nXP to level {int(user.lvl_rank) + 1}: {to_exp - int(user.exp_rank)}\n'
+                description = f'ECT: {user.tokens}\n'
+                description += f'Level: {user.lvl_rank}\n'
+                description += f'XP: {int(user.exp_all) + int(user.exp_rank)}\n'
+                description += f'XP to level {int(user.lvl_rank) + 1}: {to_exp - int(user.exp_rank)}\n'
                 
-                if clan is not None:               
+                if clan is not None:             
                     for u in clan.vault0:
                         if int(u.split(":")[0]) == f_interaction.user.id:
-                            description += f"Vault0: {u.split(':')[1]} ECT ({u.split(':')[2]}%)\nVault1: {round(int(clan.vault1) / 100 * int(u.split(':')[2]), 9)} ECT ({clan.vault1} ECT)"
+                            description += f"Vault0: {u.split(':')[1]}"
+                            description += f" ECT ({u.split(':')[2]}%)\n"
+                            description += f"Vault1: {round(float(clan.vault1) / 100 * float(u.split(':')[2]), 9)} ECT ({clan.vault1} ECT)"
                             break
 
                 emb = discord.Embed(
@@ -1008,7 +1039,7 @@ class ClansCog(BasicCog, name='clans'):
                         errors += 1
                         if errors < 5:
                             error_msg = await self.__msg_error(
-                                events, f_interaction
+                                errors, f_interaction
                             )
                         continue
 
@@ -1016,7 +1047,7 @@ class ClansCog(BasicCog, name='clans'):
                     errors += 1
                     if errors < 5:
                         error_msg = await self.__msg_error(
-                            events, f_interaction
+                            errors, f_interaction
                         )
                     continue
 
@@ -1026,7 +1057,7 @@ class ClansCog(BasicCog, name='clans'):
                     color=INVISIBLE_COLOR,
                     member=f_interaction.user
                 )
-                await self.__transfer_currency(
+                return await self.__transfer_currency(
                     f_interaction, errors, member
                 )
 
@@ -1040,7 +1071,7 @@ class ClansCog(BasicCog, name='clans'):
 
     async def __transfer_currency(
         self: "ClansCog", f_interaction: Interaction, errors: int, member: User
-    ) -> None:
+    ) -> bool:
         while errors < 5:
             try:
                 cash = await self.bot.wait_for(
@@ -1049,7 +1080,7 @@ class ClansCog(BasicCog, name='clans'):
                 )
             except asyncio.TimeoutError:
                 await timeout_error(f_interaction.user)
-                return None
+                return False
 
             try:
                 cash = float(cash.content)
@@ -1068,7 +1099,7 @@ class ClansCog(BasicCog, name='clans'):
                 continue
             
             with orm.db_session:
-                tokens: int = int(Members.get(id=str(f_interaction.user.id)).tokens)
+                tokens: float = float(Members.get(id=str(f_interaction.user.id)).tokens)
 
             if tokens < cash or tokens <= 0:
                 errors += 1
@@ -1099,7 +1130,7 @@ class ClansCog(BasicCog, name='clans'):
                 )
             except asyncio.TimeoutError:
                 await timeout_error(f_interaction.user)
-                return None
+                return False
 
             if msg_interaction.component.label == 'Decline':
                 await invisible_respond(msg_interaction)
@@ -1107,12 +1138,12 @@ class ClansCog(BasicCog, name='clans'):
                     text='Declined?! That\'s fine. You can send ECT at any time.',
                     color=RED_COLOR,
                     member=f_interaction.user)
-                return None
+                return False
 
             elif msg_interaction.component.label == ' Send':
                 await invisible_respond(msg_interaction)
                 with orm.db_session:
-                    tokens: int = int(Members.get(id=str(f_interaction.user.id)).tokens)
+                    tokens: float = float(Members.get(id=str(f_interaction.user.id)).tokens)
 
                 if tokens < cash or tokens <= 0:
                     errors += 1
@@ -1124,9 +1155,9 @@ class ClansCog(BasicCog, name='clans'):
                 
                 with orm.db_session:
                     mem: Members = Members.get(id=str(member.id))
-                    mem.tokens = str(int(mem.tokens) + cash)
+                    mem.tokens = str(float(mem.tokens) + cash)
                     Members.get(id=str(f_interaction.user.id)).tokens = str(
-                        int(Members.get(id=str(f_interaction.user.id)).tokens) - cash
+                        float(Members.get(id=str(f_interaction.user.id)).tokens) - cash
                     )
 
                     await send_embed(
@@ -1153,13 +1184,13 @@ class ClansCog(BasicCog, name='clans'):
                     print(f'tokens transfer from {str(f_interaction.user.name)}, to {str(member.name)} - `{cash}`')
 
                     TransactionMain(
-                        from_id=str(f_interaction.user.id),
-                        to_id=str(member.id),
+                        from_user=str(f_interaction.user.id),
+                        to_user=str(member.id),
                         sum=str(cash),
-                        date=datetime.datetime.now()
+                        date=datetime.now()
                     )
                     await asyncio.sleep(3)
-                return None
+                return False
 
     async def __tokens_not_found(
         self: "ClansCog", _errors: int, tokens: int, f_interaction: Interaction
@@ -1192,7 +1223,7 @@ class ClansCog(BasicCog, name='clans'):
         )
         
         with orm.db_session:
-            if int(Members.get(id=str(f_interaction.user.id)).tokens) <= 0:
+            if float(Members.get(id=str(f_interaction.user.id)).tokens) <= 0:
                 await f_interaction.respond(
                     embed=discord.Embed(
                         description='Your balance is 0 ECT. I cannot top up city\'s Vault0 with 0 ECT. People will riot.',
@@ -1242,7 +1273,7 @@ class ClansCog(BasicCog, name='clans'):
                         )
                     continue
 
-                tokens: int = int(Members.get(id=str(f_interaction.user.id)).tokens)
+                tokens: float = float(Members.get(id=str(f_interaction.user.id)).tokens)
 
                 if tokens < cash or tokens <= 0:
                     errors += 1
@@ -1258,7 +1289,7 @@ class ClansCog(BasicCog, name='clans'):
                     continue
 
                 emb = discord.Embed(
-                    description=f'Just to be sure. You want to top up Vault0 of {clan["name"]} with **{cash}** ECT',
+                    description=f'Just to be sure. You want to top up Vault0 of {clan.name} with **{cash}** ECT',
                     colour=GREEN_COLOR
                 )
                 msg = await f_interaction.user.send(
@@ -1280,7 +1311,7 @@ class ClansCog(BasicCog, name='clans'):
                     await timeout_error(f_interaction.user)
                     return None
 
-                if await self.__replenishment_clan_storage():
+                if await self.__replenishment_clan_storage(msg_interaction, f_interaction, cash, errors, clan):
                     return None
 
     async def __replenishment_clan_storage(
@@ -1299,7 +1330,7 @@ class ClansCog(BasicCog, name='clans'):
 
             elif msg_interaction.component.label == ' Top up':
                 await invisible_respond(msg_interaction)
-                tokens: int = int(Members.get(id=str(f_interaction.user.id)).tokens)
+                tokens: float = float(Members.get(id=str(f_interaction.user.id)).tokens)
 
                 if tokens < cash or tokens <= 0:
                     errors += 1
@@ -1318,33 +1349,36 @@ class ClansCog(BasicCog, name='clans'):
                     if valut.split(":")[0] == str(f_interaction.user.id):
                         valut = valut.split(":")
                         valut[1] = str(float(valut[1]) + cash)
+                orm.commit()
                 
                 member: Members = Members.get(id=str(f_interaction.user.id))
 
                 member.tokens = str(tokens - cash)
+                orm.commit()
 
                 await vault0_refresh(clan)
 
-                rate: int = 0
-                total_tokens: int = 0
-                vault0_tokens: int = 0
+                rate: float = 0
+                total_tokens: float = 0
+                vault0_tokens: float = 0
                 for user in clan.vault0:
-                    vault0_tokens += user.split(":")[1]
-                    if user.split(":")[0] == f_interaction.user.id:
+                    vault0_tokens += float(user.split(":")[1])
+                    if user.split(":")[0] == str(f_interaction.user.id):
                         await send_embed(
                             title='Nice!',
                             text=f'You\'ve topped up city\'s Vault0 with **{cash}** ECT successfully.\n'
                                 f'Vault0 share: {user.split(":")[1]} ECT ({user.split(":")[2]}%)',
                             color=GREEN_COLOR,
-                            member=f_interaction.user)
-                        rate = int(user.split(":")[2])
-                        total_tokens = int(user.split(":")[1])
+                            member=f_interaction.user
+                        )
+                        rate = float(user.split(":")[2])
+                        total_tokens = float(user.split(":")[1])
 
                 await send_embed(
                     text=f'{f_interaction.user.mention} topped up our Vault0 for **{cash}** ECT.\n'
                         f'Vault0 balance: **{vault0_tokens}** ECT',
                     color=BLUE_COLOR,
-                    channel=f_interaction.guild.get_channel(clan.channel_logs_id)
+                    channel=f_interaction.guild.get_channel(int(clan.channel_logs_id))
                 )
 
                 TransactionMain(
@@ -1359,7 +1393,7 @@ class ClansCog(BasicCog, name='clans'):
 
                 await self._log(
                     f"top up clan: {f_interaction.user.id} {f_interaction.user.name}, "
-                    f"cash: {cash}, clan: {clan['token']}"
+                    f"cash: {cash}, clan: {clan.token}"
                 )
                 return True
 

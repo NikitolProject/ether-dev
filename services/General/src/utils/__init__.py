@@ -12,6 +12,8 @@ from csv import DictReader
 
 from datetime import datetime
 
+from multiprocessing import Process
+
 from discord import (
     Guild, Message, Member,
     TextChannel, Embed, Forbidden,
@@ -42,11 +44,18 @@ def float_round(num: int, places: int = 0) -> float:
     return round(num * (10 ** places)) / float(10 ** places)
 
 
+def install_rarity(data: dict) -> None:
+    """
+    Installing the rarity
+    """
+    os.system(f'python3 rarity.py --contract {data["asset_contract"]["address"]} --max_token_id 20000')
+
+
 async def get_rarity(data) -> ty.Union[None, ty.Tuple[None, bool], ty.Tuple[list, bool]]:
     """
     Function for getting a rarity collection/loading a collection
     """
-    os.system(f'python3 rarity.py --contract {data["asset_contract"]["address"]} --max_token_id 20000')
+    Process(target=install_rarity, args=(data,)).start()
 
     if data['collection']["safelist_request_status"] != "verified":
         return None
@@ -96,12 +105,12 @@ async def vault0_refresh(clan: Clans):
     Function for updating the vault0 clan rating
     """
     with orm.db_session:
-        total_tokens = 0
+        total_tokens: float = 0.0
         for t in clan.vault0:
-            total_tokens += t.split(":")[1]
+            total_tokens += float(t.split(":")[1])
 
         for i, user in enumerate(clan.vault0):
-            rate = float_round(100 / total_tokens * int(user.split(":")[1]), 4)
+            rate = float_round(100 / total_tokens * float(user.split(":")[1]), 4)
             clan.vault0[i] = user.split(":")[0] + ":" + user.split(":")[1] + ":" + str(rate)
 
 
@@ -361,7 +370,7 @@ async def add_user_to_database(member: Member) -> None:
             ether_status=False,
             nods_status=False,
             vi0_status=False,
-            vi1_status=False,
+            vi1_status=True,
             exp_all="0",
             exp_rank="25",
             lvl_rank="1",

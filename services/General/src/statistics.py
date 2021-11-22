@@ -22,10 +22,10 @@ class Statistics(BasicCog, name='statistics'):
         self.members_count = set()
         with orm.db_session:
             for guild in Guilds.select(lambda g: not g.frozen):
-                if not guild.main_server or not guild.verification:
+                if not guild.main_server and not guild.verification:
                     continue
 
-                guild = self.bot.get_guild(guild.id)
+                guild = self.bot.get_guild(int(guild.id))
                 if guild is None:
                     continue
 
@@ -42,10 +42,7 @@ class Statistics(BasicCog, name='statistics'):
                 if member.bot:
                     continue
 
-                if member.id in self.members_count:
-                    continue
-
-                user = Members.get(id=member.id)
+                user = Members.get(id=str(member.id))
                 if user is not None and user.vi1_status:
                     self.members_count.add(member.id)
 

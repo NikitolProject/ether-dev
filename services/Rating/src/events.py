@@ -37,9 +37,12 @@ class Rating(BasicCog, name='rating'):
         with orm.db_session:
             for member in Members.select(lambda m: int(m.daily_exp_msg_limit_time) == 0):
                 member.daily_exp_msg_limit = str(self.limit)
+                member.daily_exp_msg_limit_time = str(self.limit_minutes_time)
+                orm.commit()
 
             for member in Members.select(lambda m: int(m.daily_exp_msg_limit_time) > 0):
                 member.daily_exp_msg_limit_time = str(int(member.daily_exp_msg_limit_time) - 1)
+                orm.commit()
 
         t = datetime.now()
         if '%s:%s' % (t.hour, t.minute) == '15:5':
@@ -62,20 +65,20 @@ class Rating(BasicCog, name='rating'):
         if message.channel.type == discord.ChannelType.private:
             return None
 
-        if message.author.bot or randint(30, 50) < len(message.content) < randint(60, 100):
-            return None
-
         with orm.db_session:
             user = Members.get(id=str(message.author.id))
 
-        if user is None or int(user.daily_exp_msg_limit) > 0:
+        if user is None or int(user.daily_exp_msg_limit) == 0:
             return None
-        
+
+        if 1 != randint(1, 3):
+            return None
+
         exp_rank = await self.__check_return_exp(message, int(user.id))
 
         if exp_rank is None:
             return None
-        
+
         with orm.db_session:
             user: Members = Members.get(id=str(message.author.id))
             user.exp_rank = str(int(user.exp_rank) + exp_rank)
@@ -83,24 +86,84 @@ class Rating(BasicCog, name='rating'):
 
             if int(user.daily_exp_msg_limit_time) <= 0:
                 user.daily_exp_msg_limit_time = str(int(user.daily_exp_msg_limit_time) + self.limit_minutes_time)
+            orm.commit()
 
         await self.__new_lvl(user._id)
+
+    async def __check_rank_lvl(
+        self: "Rating", id: int, user_info: bool = False
+    ) -> ty.Union[ty.Tuple[bool, int, int], ty.Tuple[bool, int], int]:
+        """
+        Calculation of the necessary amount of experience to increase the level of the user
+        """
+        with orm.db_session:
+            user: Members = Members.get(_id=id)
+
+            def_exp: int = 75
+            count_lvl: int = 1
+            count: int = 5
+            coefficient: int = 2
+
+            while count_lvl != int(user.lvl_rank):
+                if count_lvl >= count:
+                    continue
+
+                count_lvl += 1
+
+                if count_lvl != count:
+                    def_exp = ceil(def_exp * coefficient)
+                    continue
+
+                if count == 5:
+                    coefficient -= 0.2
+
+                elif count == 10:
+                    coefficient -= 0.3
+
+                elif coefficient != 1.1:
+                    coefficient -= 0.1
+
+                coefficient = float_round(coefficient, 1)
+                def_exp = ceil(def_exp * coefficient)
+                count += 5
+
+            if int(user.exp_rank) >= int(def_exp):
+                await self._log(
+                    f'check rank lvl: {user.id}, {user.name}\n'
+                    f'coefficient: {coefficient}, def_exp: {def_exp}\n'
+                    f'status: T, lvl up'
+                )
+
+                if not user_info:
+                    return True, def_exp * 0.1, int(user.exp_rank) - int(def_exp)
+                return int(def_exp)
+
+            await self._log(
+                f'check rank lvl: user.id, user.name\n'
+                f'coefficient: {coefficient}, def_exp: {def_exp}\n'
+                f'status: F, lvl not up'
+            )
+
+            if not user_info:
+                return False, None, None
+            return int(def_exp)
 
     async def __new_lvl(self: "Rating", id: int, send_msg: bool = True) -> None:
         """
         User Level increase
         """
-        check, token, free_exp = await self.check_rank_lvl(id)
+        check, token, free_exp = await self.__check_rank_lvl(id)
 
         if not check:
             return None
 
         with orm.db_session:
-            user: Members = Members.get(id=str(id))
+            user: Members = Members.get(_id=id)
             user.exp_rank = "0" if free_exp is None else str(free_exp)
             user.exp_all = str(int(user.exp_all) - free_exp)
             user.lvl_rank = str(int(user.lvl_rank) + 1)
             user.tokens = str(float(user.tokens) + float(token))
+            orm.commit()
 
         await send_log_channel(
             title='Level up',
@@ -125,6 +188,7 @@ class Rating(BasicCog, name='rating'):
                 get_tokens=str(token),
                 new_lvl=user.lvl_rank
             )
+            orm.commit()
 
         await self._log(
             'lvl up:', user.id, user.name, 
@@ -141,7 +205,6 @@ class Rating(BasicCog, name='rating'):
         """
         with orm.db_session:
             guild: Guilds = Guilds.get(id=str(ctx.guild.id))
-            category: Clans = Clans.get(category_id=str(ctx.channel.category.id))
 
         if guild.frozen:
             return None
@@ -150,11 +213,12 @@ class Rating(BasicCog, name='rating'):
             ctx.channel.id == ether_city_channels['vi1-everyone']:
             return 10
 
+        with orm.db_session:
+            category: Clans = Clans.get(channel_engage_id=str(ctx.channel.id))
+
         with contextlib.suppress(Exception):
-            if category is not None and _id == int(category.owner_clan) or \
-                 _id in category.nods and \
-                      str(ctx.channel.id) == str(category.channel_engage_id):
-                        return 10
+            if category is not None and _id == int(category.owner_clan) or _id in category.nods:
+                return 10
 
 
 def setup(bot):

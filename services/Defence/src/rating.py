@@ -138,27 +138,27 @@ class Rating(BasicCog, name='rating'):
         await self._log('check members guild:', guild.id, guild.name)
 
         with orm.db_session:
-            guild: Guilds = Guilds.get(id=str(guild.id))
+            m_guild: Guilds = Guilds.get(id=str(guild.id))
 
-        if guild.frozen:
-            return None
+            if m_guild.frozen:
+                return None
 
-        for member in guild.members:
-            if member.bot:
-                continue
-            
-            if guild.id == discord_config['server_main']:
-                if Members.get(id=str(member.id)) is None:
-                    await add_user_to_database(member)
+            for member in guild.members:
+                if member.bot:
+                    continue
+                
+                if guild.id == discord_config['server_main']:
+                    if Members.get(id=str(member.id)) is None:
+                        await add_user_to_database(member)
+                        await asyncio.sleep(0.5)
+                        continue
+
+                    await self.__check_status(member)
                     await asyncio.sleep(0.5)
                     continue
 
-                await self.check_status(member)
-                await asyncio.sleep(0.5)
-                continue
-
-            if Members.get(id=str(member.id)) is not None:
-                await self.__check_status(member)
+                if Members.get(id=str(member.id)) is not None:
+                    await self.__check_status(member)
 
     async def __check_status(self: "Rating", member: Member) -> None:
         """
@@ -170,31 +170,32 @@ class Rating(BasicCog, name='rating'):
             user = Members.get(id=str(member.id))
             m_guild: Guilds = Guilds.get(id=str(member.guild.id))
 
-        if not user.ether_status or \
+        if not user.ether_status and \
             not user.nods_status:
             return None
 
-        if m_guild.role_ether is None or \
+        if m_guild.role_ether is None and \
             m_guild.role_nods is None:
                 return None
 
-        if guild.get_role(int(m_guild.role_ether)) is None or \
+        if guild.get_role(int(m_guild.role_ether)) is None and \
             guild.get_role(int(m_guild.role_nods)) is None:
                 return None
 
-        with contextlib.suppress(Exception):
+        if user.ether_status and guild.get_role(int(m_guild.role_ether)) not in member.roles:
             await member.add_roles(
                 guild.get_role(int(m_guild.role_ether))
             )
             await asyncio.sleep(0.1)
-            
-            await member.add_roles(
-                guild.get_role(int(m_guild.role_nods))
-            )
 
             await self._log(
                 "role_ether", 'get: ', member.id, member.name, 
                 'guild: ', guild.id, guild.name
+            )
+
+        if user.nods_status and guild.get_role(int(m_guild.role_nods)) not in member.roles:
+            await member.add_roles(
+                guild.get_role(int(m_guild.role_nods))
             )
 
             await self._log(

@@ -126,15 +126,18 @@ class Buttons(BasicCog, name='buttons'):
         The main event reacting to the click on the button
         """
         with orm.db_session:
-            member: Members = Members.get(id=str(interaction.user.id))
+            try:
+                member: Members = Members.get(id=str(interaction.user.id))
+
+            except orm.ObjectNotFound:
+                return await self.send_button_error(
+                    'User not found', interaction
+                )
 
         await self._log(
             f"Button click {interaction.user.name}, "
             f"{interaction.user.id}, {interaction.component.label}"
         )
-
-        if member is None:
-            return None
 
         buttons_list = (
             'Balance',
@@ -208,21 +211,13 @@ class Buttons(BasicCog, name='buttons'):
                         await self.send_button_error(e, interaction)
 
         elif interaction.component.label == 'Join':
-            if interaction.user.id not in self.user_used:
-                if interaction.user.id not in self.used_join:
-                    if await self.check_member_in_clan(interaction, 'channel_join_id') == 0:
-                        try:
-                            self.user_used.append(interaction.user.id)
-                            self.used_join.append(interaction.user.id)
-                            stat = await self.bot.get_cog('clans').join_to_clan(interaction)
-                            self.user_used.remove(interaction.user.id)
-                            if stat is None:
-                                await asyncio.sleep(600)
-                            self.used_join.remove(interaction.user.id)
-                        except Exception as e:
-                            self.user_used.remove(interaction.user.id)
-                            self.used_join.remove(interaction.user.id)
-                            await self.send_button_error(e, interaction)
+            if await self.check_member_in_clan(interaction, 'channel_join_id') == 0:
+                try:
+                    stat = await self.bot.get_cog('clans').join_to_clan(interaction)
+                    if stat is None:
+                        await asyncio.sleep(600)
+                except Exception as e:
+                    await self.send_button_error(e, interaction)
 
         elif interaction.component.label == 'Top up':
             if interaction.user.id not in self.user_used:
