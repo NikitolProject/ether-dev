@@ -25,38 +25,6 @@ class Rating(BasicCog, name='rating'):
     limit: int = 50
     limit_minutes_time: int = 1440
 
-    def __init__(self: "Rating", bot: commands.Bot) -> None:
-        super().__init__(bot)
-        self.check_daily_exp_limit.start()
-
-    @tasks.loop(minutes=1)
-    async def check_daily_exp_limit(self: "Rating") -> None:
-        """
-        Updates to the daily exp limit time indicator, counts the time until the cooldown is completed
-        """
-        with orm.db_session:
-            for member in Members.select(lambda m: int(m.daily_exp_msg_limit_time) == 0):
-                member.daily_exp_msg_limit = str(self.limit)
-                member.daily_exp_msg_limit_time = str(self.limit_minutes_time)
-                orm.commit()
-
-            for member in Members.select(lambda m: int(m.daily_exp_msg_limit_time) > 0):
-                member.daily_exp_msg_limit_time = str(int(member.daily_exp_msg_limit_time) - 1)
-                orm.commit()
-
-        t = datetime.now()
-        if '%s:%s' % (t.hour, t.minute) == '15:5':
-            await self._log('start daily drop clans')
-            await self.bot.get_cog('clans').reward_top_clans()
-
-    @check_daily_exp_limit.before_loop
-    async def before_check_daily_exp_limit(self: "Rating") -> None:
-        """
-        Initializing the event check_daily_exp_limit
-        """
-        await self._log('start check daily exp limit')
-        await self.bot.wait_until_ready()
-
     @commands.Cog.listener()
     async def on_message(self: "Rating", message: discord.Message) -> None:
         """
@@ -65,7 +33,7 @@ class Rating(BasicCog, name='rating'):
         if message.channel.type == discord.ChannelType.private:
             return None
 
-        with orm.db_session:
+        with orm.db_session(optimistic=False):
             user = Members.get(id=str(message.author.id))
 
         if user is None or int(user.daily_exp_msg_limit) == 0:
@@ -79,7 +47,7 @@ class Rating(BasicCog, name='rating'):
         if exp_rank is None:
             return None
 
-        with orm.db_session:
+        with orm.db_session(optimistic=False):
             user: Members = Members.get(id=str(message.author.id))
             user.exp_rank = str(int(user.exp_rank) + exp_rank)
             user.daily_exp_msg_limit = str(int(user.daily_exp_msg_limit) - 1)
@@ -96,7 +64,7 @@ class Rating(BasicCog, name='rating'):
         """
         Calculation of the necessary amount of experience to increase the level of the user
         """
-        with orm.db_session:
+        with orm.db_session(optimistic=False):
             user: Members = Members.get(_id=id)
 
             def_exp: int = 75
@@ -157,7 +125,7 @@ class Rating(BasicCog, name='rating'):
         if not check:
             return None
 
-        with orm.db_session:
+        with orm.db_session(optimistic=False):
             user: Members = Members.get(_id=id)
             user.exp_rank = "0" if free_exp is None else str(free_exp)
             user.exp_all = str(int(user.exp_all) - free_exp)
@@ -180,7 +148,7 @@ class Rating(BasicCog, name='rating'):
                 member=self.bot.get_user(int(user.id))
             )
 
-        with orm.db_session:
+        with orm.db_session(optimistic=False):
             TransactionMain(
                 type='lvl_up',
                 date=datetime.now(),
@@ -203,7 +171,7 @@ class Rating(BasicCog, name='rating'):
         """
         The function that checks the channels returns the amount of experience
         """
-        with orm.db_session:
+        with orm.db_session(optimistic=False):
             guild: Guilds = Guilds.get(id=str(ctx.guild.id))
 
         if guild.frozen:
@@ -213,7 +181,7 @@ class Rating(BasicCog, name='rating'):
             ctx.channel.id == ether_city_channels['vi1-everyone']:
             return 10
 
-        with orm.db_session:
+        with orm.db_session(optimistic=False):
             category: Clans = Clans.get(channel_engage_id=str(ctx.channel.id))
 
         with contextlib.suppress(Exception):

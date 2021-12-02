@@ -6,9 +6,11 @@ import click
 
 from subprocess import Popen
 
+cur_dir = os.path.dirname(os.path.abspath(__file__))
+
 
 def add_services_json(process, dir) -> None:
-    with open('services.json', 'r+') as f:
+    with open(f'{cur_dir}/services.json', 'r+') as f:
         services = json.load(f)
         services["process_ids"][dir] = process.pid
         f.seek(0)
@@ -17,7 +19,7 @@ def add_services_json(process, dir) -> None:
 
 
 def remove_services_json(dir) -> None:
-    with open('services.json', 'r+') as f:
+    with open(f'{cur_dir}/services.json', 'r+') as f:
         services = json.load(f)
         with contextlib.suppress(ProcessLookupError):
             os.kill(services["process_ids"][dir], 9)
@@ -28,11 +30,11 @@ def remove_services_json(dir) -> None:
 
 
 def load_all_services() -> None:
-    for dir in os.listdir('services'):
-        if not os.path.isdir(os.path.join('services', dir)) and \
-          not os.path.exists(os.path.join('services', dir, 'service.json')):
+    for dir in os.listdir(f'{cur_dir}/services'):
+        if not os.path.isdir(os.path.join(f'{cur_dir}/services', dir)) and \
+          not os.path.exists(os.path.join(f'{cur_dir}/services', dir, 'service.json')):
             continue
-        process = Popen(['python3', f'services/{dir}/bot.py'])
+        process = Popen(['python3', f'{cur_dir}/services/{dir}/bot.py'])
         add_services_json(process, dir)
 
 
@@ -55,7 +57,7 @@ def services(ctx) -> None:
     """
     List of running services.
     """
-    with open('services.json', 'r') as f:
+    with open(f'{cur_dir}/services.json', 'r') as f:
         services = json.load(f)
 
     if len(services["process_ids"]) == 0:
@@ -75,7 +77,7 @@ def start(ctx) -> None:
     if ctx.parent.params['service'] == 'all':
         load_all_services()
     else:
-        process = Popen(['python3', f'services/{ctx.parent.params["service"]}/bot.py'])
+        process = Popen(['python3', f'{cur_dir}/services/{ctx.parent.params["service"]}/bot.py'])
         add_services_json(process, ctx.parent.params["service"])
 
 
@@ -86,7 +88,7 @@ def stop(ctx) -> None:
     Stop current service/all services.
     """
     if ctx.parent.params['service'] == 'all':
-        with open('services.json', 'r+') as f:
+        with open(f'{cur_dir}/services.json', 'r+') as f:
             services = json.load(f)
             for service in services["process_ids"]:
                 with contextlib.suppress(ProcessLookupError):

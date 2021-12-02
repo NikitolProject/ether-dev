@@ -54,6 +54,15 @@ class ServerSetup(BasicCog, name='server_setup'):
                 )
                 return True
 
+            dm = await f_interaction.author.create_dm()
+
+            await f_interaction.respond(
+                embed=discord.Embed(
+                    description=f"Please go to the [bot's private messages](https://discord.com/channels/@me/{dm.id})",
+                    color=discord.Colour.dark_blue()
+                )
+            )
+
             await self._log(
                 f'start create city: {f_interaction.user.id}, {f_interaction.user.name} '
                 f'guild: {f_interaction.guild.id}, {f_interaction.guild.name}'

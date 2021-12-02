@@ -126,13 +126,13 @@ class Buttons(BasicCog, name='buttons'):
         The main event reacting to the click on the button
         """
         with orm.db_session:
-            try:
-                member: Members = Members.get(id=str(interaction.user.id))
+            while True:
+                with contextlib.suppress(Exception):
+                    member: Members = Members.get(id=str(interaction.user.id))
 
-            except orm.ObjectNotFound:
-                return await self.send_button_error(
-                    'User not found', interaction
-                )
+                    if member is None:
+                        return None
+                    break
 
         await self._log(
             f"Button click {interaction.user.name}, "
@@ -151,11 +151,24 @@ class Buttons(BasicCog, name='buttons'):
             'Players',
             'Local',
             'Global',
-            'My cities'
+            'My cities',
+            'Defrost the city',
+            'Enter a captcha'
         )
 
         if not interaction.component.label in buttons_list:
             return None
+
+        elif interaction.component.label == 'Defrost the city':
+            with orm.db_session:
+                try:
+                    city: Guilds = Guilds.get(owner_id=str(interaction.author.id))
+                    guild: Guild = self.bot.get_guild(int(city.id))
+
+                    await self.bot.get_cog('defence').defrost_guild(guild, interaction)
+                    return None
+                except Exception as e:
+                    await self.send_button_error(e, interaction)
 
         if not await self.check_guild_for_perms(interaction.guild):
             await interaction.respond(
@@ -269,7 +282,13 @@ class Buttons(BasicCog, name='buttons'):
                 await self.bot.get_cog('clans').top_members(interaction)
             except Exception as e:
                 await self.send_button_error(e, interaction)
-        
+
+        elif interaction.component.label == 'Enter a captcha':
+            try:
+                await self.bot.get_cog('security').send_captcha(interaction)
+            except Exception as e:
+                await self.send_button_error(e, interaction)
+
         elif interaction.component.label == 'Local':
             if interaction.user.id not in self.user_used:
                 if interaction.user.id not in self.used_local:

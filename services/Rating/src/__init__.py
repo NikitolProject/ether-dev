@@ -1,4 +1,5 @@
 import os
+import contextlib
 
 import logging
 
@@ -10,8 +11,9 @@ discord_config = {
                 'client_id=810134081530363904&permissions=8&scope=bot',
     'invite_link_to_main': 'https://discord.gg/2TCuBGhyN6',
     'server_main': 905454076832149505,
+    'security': True,
     'create_msg_rating_wallet': True,
-    'super_admins': [505744767095930881],
+    'super_admins': [505744767095930881, 798613956863590430, 805456415237603338],
     'role_vi1': 905469640216555612,
     'role_ether': 905469675448717402,
     'role_nods': 905469640216555612,
@@ -28,14 +30,15 @@ ether_city_channels = {
     'vi1-everyone': 905471426109276180,
     'marketplace': 905471522943168574,
     'log': 905471645244874753,
-    'cities': 905471696943849532
+    'cities': 905471696943849532,
+    'validate': 913894720562921512
 }
 
 
 class BasicCog(commands.Cog):
 
     logging.basicConfig(
-        level=logging.DEBUG, filename=f'{os.path.abspath(os.curdir)}/services/General/bot.log', 
+        level=logging.DEBUG, filename=f'{os.path.abspath(os.curdir)}/services/Rating/bot.log', 
         format='%(asctime)s %(levelname)s:%(message)s'
     )
 
@@ -45,11 +48,13 @@ class BasicCog(commands.Cog):
         self.bot = bot
 
     async def _log(self: "BasicCog", message: str, *args: tuple) -> None:
-        message += ' ' + ' '.join([str(idx) for idx in args])
-        self.logger.info(message)
-        print(message)
+        with contextlib.suppress(Exception):
+            message += ' ' + ' '.join([str(idx) for idx in args])
+            self.logger.info(message)
+            print(message)
 
     async def _error(self: "BasicCog", message: str, *args) -> None:
-        message += ' ' + ' '.join([str(idx) for idx in args])
-        self.logger.error(message)
-        print(message)
+        with contextlib.suppress(Exception):
+            message += ' ' + ' '.join([str(idx) for idx in args])
+            self.logger.error(message)
+            print(message)

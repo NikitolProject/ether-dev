@@ -1,0 +1,9 @@
+{
+    "errors": {
+        "count": 2,
+        "items": [
+            "Autotests failed: [Errno 5] Input/output error ",
+            "Autotests failed: @db_session-wrapped generator cannot be used inside another db_session "
+        ]
+    }
+}

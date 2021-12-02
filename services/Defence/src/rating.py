@@ -32,7 +32,7 @@ class Rating(BasicCog, name='rating'):
         """
         Calculation of the necessary amount of experience to increase the level of the user
         """
-        with orm.db_session:
+        with orm.db_session(optimistic=False):
             user: Members = Members.get(_id=_id)
 
         def_exp: int = 75
@@ -93,7 +93,7 @@ class Rating(BasicCog, name='rating'):
         if not check:
             return None
 
-        with orm.db_session:
+        with orm.db_session(optimistic=False):
             user: Members = Members.get(_id=_id)
             user.exp_rank = 0 if free_exp is None else free_exp
             user.exp_all = str(int(user.exp_all) - free_exp)
@@ -115,7 +115,7 @@ class Rating(BasicCog, name='rating'):
                 member=self.bot.get_user(int(user.id))
             )
 
-        with orm.db_session:
+        with orm.db_session(optimistic=False):
             TransactionMain(
                 type='lvl_up',
                 date=datetime.now(),
@@ -137,7 +137,7 @@ class Rating(BasicCog, name='rating'):
         """
         await self._log('check members guild:', guild.id, guild.name)
 
-        with orm.db_session:
+        with orm.db_session(optimistic=False):
             m_guild: Guilds = Guilds.get(id=str(guild.id))
 
             if m_guild.frozen:
@@ -166,7 +166,7 @@ class Rating(BasicCog, name='rating'):
         """
         guild: Guild = member.guild
 
-        with orm.db_session:
+        with orm.db_session(optimistic=False):
             user = Members.get(id=str(member.id))
             m_guild: Guilds = Guilds.get(id=str(member.guild.id))
 

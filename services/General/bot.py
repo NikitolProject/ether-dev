@@ -21,6 +21,8 @@ bot.load_extension('src.marketplace')
 bot.load_extension('src.clans')
 bot.load_extension('src.city')
 bot.load_extension('src.rating')
+bot.load_extension('src.security')
+bot.load_extension('src.defence')
 bot.load_extension('src.buttons')
 bot.load_extension('src.statistics')
 

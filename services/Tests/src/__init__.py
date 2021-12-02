@@ -1,7 +1,10 @@
 import os
+import json
 import contextlib
 
 import logging
+
+import discord
 
 from discord.ext import commands
 
@@ -34,11 +37,13 @@ ether_city_channels = {
     'validate': 913894720562921512
 }
 
+cur_dir = os.path.dirname(os.path.abspath(__file__))
+
 
 class BasicCog(commands.Cog):
 
     logging.basicConfig(
-        level=logging.DEBUG, filename=f'{os.path.abspath(os.curdir)}/services/Defence/bot.log', 
+        level=logging.DEBUG, filename=f'{os.path.abspath(os.curdir)}/services/Tests/bot.log', 
         format='%(asctime)s %(levelname)s:%(message)s'
     )
 
@@ -58,3 +63,22 @@ class BasicCog(commands.Cog):
             message += ' ' + ' '.join([str(idx) for idx in args])
             self.logger.error(message)
             print(message)
+
+
+    async def _fatal(self: "BasicCog", message: str, *args) -> None:
+        with contextlib.suppress(Exception):
+            message += ' ' + ' '.join([str(idx) for idx in args])
+
+            with open(f"{cur_dir}/utils/errors.json", 'r+') as f:
+                data = json.load(f)
+                data['errors']['count'] += 1
+                data['errors']['items'].append(message)
+                f.seek(0)
+                json.dump(data, f, indent=4)
+                f.truncate()
+            
+            self.logger.critical(message)
+            print(message)
+
+            developer: discord.Member = self.bot.get_user(505744767095930881)
+            await developer.send(f'Attention, fatal error!\n{message}')

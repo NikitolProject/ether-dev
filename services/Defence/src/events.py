@@ -4,7 +4,8 @@ import typing as ty
 
 import discord
 
-from discord import Guild, Role, TextChannel
+from discord import Guild, Role, TextChannel, VoiceChannel
+from discord.channel import CategoryChannel
 from discord.ext import commands, tasks
 
 from . import *
@@ -66,6 +67,121 @@ class Defence(BasicCog, name='defence'):
         if bot_member.guild_permissions.administrator:
             return True
 
+    @commands.Cog.listener()
+    async def on_guild_channel_delete(self: "Defence", channel: TextChannel) -> None:
+        """
+        Event deleting the channel
+        """
+        await self._log(
+            f'Channel {channel.name} was deleted in ',
+            f'{channel.guild.name}'
+        )
+
+        with orm.db_session:
+            clan: Clans = Clans.get(guild=str(channel.guild.id))
+
+            channels = [
+                clan.channel_marketplace_id, clan.channel_wallet_id,
+                clan.channel_engage_id, clan.channel_join_id,
+                clan.channel_statistics_id, clan.channel_help_id,
+                clan.channel_logs_id, clan.channel_voice_id
+            ]
+
+            if str(channel.id) not in channels:
+                return None
+
+            category: CategoryChannel = channel.category
+
+            if str(channel.id) == clan.channel_marketplace_id:
+                new_channel: TextChannel = await category.create_text_channel(
+                    'marketplace', overwrites=channel.overwrites
+                )
+                msg = await create_marketplace_msg(new_channel)
+
+                clan.channel_marketplace_id = str(new_channel.id)
+                clan.msg_marketplace_id = str(msg.id)
+
+            elif str(channel.id) == clan.channel_wallet_id:
+                new_channel: TextChannel = await category.create_text_channel(
+                    'wallet', overwrites=channel.overwrites
+                )
+                msg = await create_wallet_msg(new_channel)
+
+                clan.channel_wallet_id = str(new_channel.id)
+                clan.msg_wallet_id = str(msg.id)
+
+            elif str(channel.id) == clan.channel_engage_id:
+                new_channel: TextChannel = await category.create_text_channel(
+                    'engage', overwrites=channel.overwrites
+                )
+
+                clan.channel_engage_id = str(new_channel.id)
+
+            elif str(channel.id) == clan.channel_join_id:
+                new_channel: TextChannel = await category.create_text_channel(
+                    'join', overwrites=channel.overwrites
+                )
+                msg = await create_join_msg(new_channel, clan.name)
+                
+                clan.msg_join_id = str(msg.id)
+                clan.channel_join_id = str(new_channel.id)
+
+            elif str(channel.id) == clan.channel_statistics_id:
+                new_channel: TextChannel = await category.create_text_channel(
+                    'statistics', overwrites=channel.overwrites
+                )
+
+                user: Members = Members.get(
+                    id=clan.owner_clan
+                )
+
+                msg = await create_statistics_msg(new_channel, int(user.exp_all) + int(user.exp_rank))
+
+                clan.channel_statistics_id = str(new_channel.id)
+                clan.msg_statistics_id = str(msg.id)
+
+            elif str(channel.id) == clan.channel_help_id:
+                new_channel: TextChannel = await category.create_text_channel(
+                    'help', overwrites=channel.overwrites
+                )
+
+                marketplace = self.bot.get_channel(
+                    int(clan.channel_marketplace_id)
+                )
+                wallet = self.bot.get_channel(
+                    int(clan.channel_wallet_id)
+                )
+                engage = self.bot.get_channel(
+                    int(clan.channel_engage_id)
+                )
+                join = self.bot.get_channel(
+                    int(clan.channel_join_id)
+                )
+                statistics = self.bot.get_channel(
+                    int(clan.channel_statistics_id)
+                )
+
+                clan.channel_help_id = str(new_channel.id)
+
+                await create_city_help_msg(
+                    new_channel, marketplace, wallet, engage, join, statistics
+                )
+
+            elif str(channel.id) == clan.channel_logs_id:
+                new_channel: TextChannel = await category.create_text_channel(
+                    'logs', overwrites=channel.overwrites
+                )
+
+                clan.channel_logs_id = str(new_channel.id)
+
+            elif str(channel.id) == clan.channel_voice_id:
+                new_channel: VoiceChannel = await category.create_voice_channel(
+                    'voice', overwrites=channel.overwrites
+                )
+
+                clan.channel_voice_id = str(new_channel.id)
+            orm.commit()
+
     @staticmethod
     async def new_role(role: Role) -> Role:
         """
@@ -94,7 +210,7 @@ class Defence(BasicCog, name='defence'):
         """
         Re-creating the system role
         """
-        with orm.db_session:
+        with orm.db_session(optimistic=False):
             new_role = await self.new_role(role)
 
             if status == 'role_ether':
@@ -109,7 +225,7 @@ class Defence(BasicCog, name='defence'):
         """
         Re-creating the system role
         """
-        with orm.db_session:
+        with orm.db_session(optimistic=False):
             new_role = await self.new_role(role)
 
             if status == "role_owner_id":
@@ -193,7 +309,7 @@ class Defence(BasicCog, name='defence'):
         new_category = await channel.guild.create_category(
             name=channel.name, overwrites=channel.overwrites
         )
-        with orm.db_session:
+        with orm.db_session(optimistic=False):
             clan.category_id = str(new_category.id)
 
         await channel.guild.get_channel(
@@ -240,7 +356,7 @@ class Defence(BasicCog, name='defence'):
             name=channel.name, overwrites=channel.overwrites, 
             category=channel.category, position=channel.position
         )
-        with orm.db_session:
+        with orm.db_session(optimistic=False):
             clan.channel_voice_id = str(new_channel.id)
 
     async def c_help_re_create(
@@ -261,7 +377,7 @@ class Defence(BasicCog, name='defence'):
             channel_engage, channel_join, channel_stats
         )
 
-        with orm.db_session:
+        with orm.db_session(optimistic=False):
             clan.channel_help_id = str(new_channel.id)
 
     async def logs_re_create(
@@ -272,7 +388,7 @@ class Defence(BasicCog, name='defence'):
         """
         new_channel = await self.new_channel(channel)
 
-        with orm.db_session:
+        with orm.db_session(optimistic=False):
             clan.channel_logs_id = str(new_channel.id)
 
     async def statistics_re_create(self: "Defence", channel: TextChannel, clan: Clans) -> None:
@@ -281,7 +397,7 @@ class Defence(BasicCog, name='defence'):
         """
         new_channel = await self.new_channel(channel)
 
-        with orm.db_session:
+        with orm.db_session(optimistic=False):
             rating: RatingClans = RatingClans.get(clan_id=clan._id)
 
             if rating is None:
@@ -298,7 +414,7 @@ class Defence(BasicCog, name='defence'):
         new_channel = await self.new_channel(channel)
         msg = await create_wallet_msg(new_channel)
 
-        with orm.db_session:
+        with orm.db_session(optimistic=False):
             clan.channel_wallet_id = str(new_channel.id)
             clan.msg_wallet_id = str(msg.id)
 
@@ -309,7 +425,7 @@ class Defence(BasicCog, name='defence'):
         new_channel = await self.new_channel(channel)
         msg = await create_marketplace_msg(new_channel)
 
-        with orm.db_session:
+        with orm.db_session(optimistic=False):
             clan.channel_marketplace_id = str(new_channel.id)
             clan.msg_marketplace_id = str(msg.id)
 
@@ -319,7 +435,7 @@ class Defence(BasicCog, name='defence'):
         """
         new_channel = await self.new_channel(channel)
 
-        with orm.db_session:
+        with orm.db_session(optimistic=False):
             clan.channel_engage_id = str(new_channel.id).id
 
     async def join_re_create(self: "Defence", channel: TextChannel, clan: Clans) -> None:
@@ -329,7 +445,7 @@ class Defence(BasicCog, name='defence'):
         new_channel = await self.new_channel(channel)
         msg = await create_join_msg(new_channel, clan.name)
 
-        with orm.db_session:
+        with orm.db_session(optimistic=False):
             clan.channel_join_id = str(new_channel.id)
             clan.msg_join_id = str(msg.id)
 
@@ -344,7 +460,7 @@ class Defence(BasicCog, name='defence'):
             name=channel.name, overwrites=channel.overwrites
         )
 
-        with orm.db_session:
+        with orm.db_session(optimistic=False):
             m_guild.system_ch_category = str(new_category.id)
 
         for ch in [m_guild.system_ch_city_setup, m_guild.system_ch_help]:
@@ -367,7 +483,7 @@ class Defence(BasicCog, name='defence'):
             )
         )
 
-        with orm.db_session:
+        with orm.db_session(optimistic=False):
             m_guild.system_ch_city_setup = str(new_channel.id)
             m_guild.msg_city_setup_id = str(msg.id)
 
@@ -385,59 +501,11 @@ class Defence(BasicCog, name='defence'):
             m_guild.system_ch_help = str(new_channel.id)
 
     @commands.Cog.listener()
-    async def on_guild_channel_delete(self: "Defence", channel: TextChannel) -> None:
-        """
-        Event processing channel deletion
-        """
-        with orm.db_session:
-            m_guild: Guilds = Guilds.get(id=str(channel.guild.id))
-
-            if m_guild is None or m_guild.frozen:
-                return None
-
-            await self._log(
-                'delete channel from:', channel.guild.id, 
-                channel.guild.name, 'channel:', channel.id, 
-                channel.name
-            )
-
-            guild_channels = {
-                "system_ch_category": int(m_guild.system_ch_category),
-                "system_ch_city_setup": int(m_guild.system_ch_city_setup),
-                "system_ch_help": int(m_guild.system_ch_help),
-            }
-            for k, v in guild_channels.items():
-                if channel.id == v: 
-                    await self.func_system_list[k](channel, m_guild)
-
-            if m_guild.clans is None:
-                return None
-
-            for _id in m_guild.clans:
-                with contextlib.suppress(Exception):
-                    clan: Clans = Clans.get(id=int(_id))
-                    clan_channels = {
-                        k: v for k, v in {
-                            "category_id": int(clan.category_id),
-                            "channel_logs_id": int(clan.channel_logs_id),
-                            "channel_wallet_id": int(clan.channel_wallet_id),
-                            "channel_marketplace_id": int(clan.channel_marketplace_id),
-                            "channel_statistics_id": int(clan.channel_statistics_id),
-                            "channel_engage_id": int(clan.channel_engage_id),
-                            "channel_join_id": int(clan.channel_join_id),
-                            "channel_help_id": int(clan.channel_help_id),
-                        }
-                    }
-                    for k, v in clan_channels.items():
-                        if channel.id == v:
-                            await self.func_clan_list[k](channel, clan)
-
-    @commands.Cog.listener()
     async def on_guild_role_delete(self: "Defence", role: Role) -> None:
         """
         Event processing the removal of roles
         """
-        with orm.db_session:
+        with orm.db_session(optimistic=False):
             m_guild: Guilds = Guilds.get(id=str(role.guild.id))
 
             if m_guild is None or m_guild.frozen:
@@ -490,7 +558,7 @@ class Defence(BasicCog, name='defence'):
         roles = list(set(before.roles) - set(after.roles))
         add_roles = list(set(after.roles) - set(before.roles))
 
-        with orm.db_session:
+        with orm.db_session(optimistic=False):
             m_guild: Guilds = Guilds.get(id=str(after.guild.id))
 
             if int(m_guild.id) == discord_config["server_main"]:
@@ -557,7 +625,7 @@ class Defence(BasicCog, name='defence'):
         """
         Freezing the server and the clans that are in it
         """
-        with orm.db_session:
+        with orm.db_session(optimistic=False):
             m_guild: Guilds = Guilds.get(id=str(guild.id))
             m_guild.frozen = True
 
@@ -593,7 +661,7 @@ class Defence(BasicCog, name='defence'):
             with contextlib.suppress(Exception):
                 await guild.get_channel(v).delete()
 
-        with orm.db_session:
+        with orm.db_session(optimistic=False):
             m_guild: Guilds = Guilds.get(id=str(guild.id))
             m_guild.system_ch_category = None
             m_guild.system_ch_city_setup = None
@@ -615,9 +683,13 @@ class Defence(BasicCog, name='defence'):
 
     async def defrost_guild(self: "Defence", guild: Guild) -> None:
         """
-        Freezing the server and the clans that are in it
+        Defreezing the server and the clans that are in it
         """
-        with orm.db_session:
+        await self._log(
+            "Defreezing the server and the clans that are in it"
+        )
+
+        with orm.db_session(optimistic=False):
             m_guild: Guilds = Guilds.get(id=str(guild.id))
             if m_guild is None or m_guild.frozen or not guild.self_role.permissions.administrator:
                 return None

@@ -43,64 +43,6 @@ class Events(BasicCog, name="events"):
         await self._log(f'Discord bot "{self.bot.user.name}" ready')
 
     @commands.Cog.listener()
-    async def on_member_join(self: "Events", member: discord.Member) -> None:
-        """
-        The event that displays the new member
-        """
-        if member.bot:
-            return None
-
-        if member.guild.id != discord_config['server_main']:
-            return None
-
-        await self._log(f'New member "{member}" joined')
-
-        with orm.db_session:
-            if Members.get(id=str(member.id)) is None:
-                await add_user_to_database(member)
-                return None
-
-        await self.__check_status(member)
-        await member.add_roles(
-            discord.utils.get(
-                member.guild.roles, id=discord_config['role_vi1']
-            )
-        )
-
-    async def __check_status(self: "Events", member: discord.Member) -> None:
-        """
-        Checking all kinds of user awards
-        """
-        await self._log(
-            f'Checking status for member: {member.id}'
-        )
-
-        guild: discord.Guild = member.guild
-    
-        with orm.db_session:
-            m_guild: Guilds = Guilds.get(id=str(guild.id))
-        
-            with contextlib.suppress(Exception):
-                if not Members.get(id=str(member.id)).ether_status and \
-                    not Members.get(id=str(member.id)).nods_status:
-                    return None
-                
-                if m_guild.role_ether is None and m_guild.role_nods is None:
-                    return None
-
-                if guild.get_role(int(m_guild.role_ether)) is None and \
-                    guild.get_role(int(m_guild.role_nods)) is None:
-                    return None
-
-                await member.add_roles(
-                    guild.get_role(int(m_guild.role_ether)) if \
-                        Members.get(id=str(member.id)).ether_status else None,
-                    guild.get_role(int(m_guild.role_nods)) if \
-                        Members.get(id=str(member.id)).nods_status else None
-                )
-                await asyncio.sleep(0.1)
-
-    @commands.Cog.listener()
     async def on_guild_join(self: "Events", guild: discord.Guild) -> None:
         """
         An event for processing a user who has connected to the system

@@ -31,7 +31,7 @@ class Commands(BasicCog, name="commands"):
 
             await self._log(f'New member "{member}" joined')
 
-            with orm.db_session:
+            with orm.db_session:                            
                 if Members.get(id=str(member.id)) is None:
                     await add_user_to_database(member)
                     return None

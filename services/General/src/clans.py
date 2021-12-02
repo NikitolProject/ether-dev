@@ -718,7 +718,7 @@ class ClansCog(BasicCog, name='clans'):
 
             emb = discord.Embed(title=f'{clan.token}. {clan.name}', color=INVISIBLE_COLOR)
 
-            for i, member in enumerate(clan.members_rating, start=1):
+            for i, member in enumerate(list(reversed(clan.members_rating)), start=1):
                 emb.add_field(
                     name=f'**{i}**: `{self.bot.get_user(int(member.split(":")[0]))}`', 
                     value=f'Lvl: {member.split(":")[1]}\nXP: {member.split(":")[2]}', 
@@ -782,7 +782,14 @@ class ClansCog(BasicCog, name='clans'):
                 member=f_interaction.user,
                 interaction=f_interaction
             )
-            await invisible_respond(f_interaction)
+            dm = await f_interaction.author.create_dm()
+
+            await f_interaction.respond(
+                embed=discord.Embed(
+                    description=f"Please go to the [bot's private messages](https://discord.com/channels/@me/{dm.id})",
+                    color=discord.Colour.dark_blue()
+                )
+            )
             await msg.edit(
                 components=[
                     [
@@ -1008,6 +1015,15 @@ class ClansCog(BasicCog, name='clans'):
                     ).set_footer(text='Ξther City Network')
                 )
                 return None
+
+            dm = await f_interaction.author.create_dm()
+
+            await f_interaction.respond(
+                embed=discord.Embed(
+                    description=f"Please go to the [bot's private messages](https://discord.com/channels/@me/{dm.id})",
+                    color=discord.Colour.dark_blue()
+                )
+            )
 
             await send_embed(
                 text='Reply with recipient\'s id. To get user\'s id use this guide\n'
@@ -1244,7 +1260,14 @@ class ClansCog(BasicCog, name='clans'):
                 interaction=f_interaction,
                 member=f_interaction.user
             )
-            await invisible_respond(f_interaction)
+            dm = await f_interaction.author.create_dm()
+
+            await f_interaction.respond(
+                embed=discord.Embed(
+                    description=f"Please go to the [bot's private messages](https://discord.com/channels/@me/{dm.id})",
+                    color=discord.Colour.dark_blue()
+                )
+            )
 
             errors = 0
             error_msg = None
@@ -1253,12 +1276,17 @@ class ClansCog(BasicCog, name='clans'):
                     cash = await self.bot.wait_for(
                         'message', timeout=120,
                         check=lambda m: m.author == f_interaction.user and m.channel.type == discord.ChannelType.private
+                        or m.author.id == 905453765275029514 and m.channel.type == discord.ChannelType.private
                     )
                 except asyncio.TimeoutError:
                     await timeout_error(f_interaction.user)
                     return None
 
                 try:
+                    if cash.author.id == 905453765275029514:
+                        print("OOOOOOOOOOOOOOOOOOOOOK!")
+                        return None
+
                     cash = float(cash.content)
                     cash = float_round(cash, 9)
                 except ValueError:

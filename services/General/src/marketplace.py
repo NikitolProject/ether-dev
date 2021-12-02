@@ -1,4 +1,5 @@
 import os
+import json
 
 import asyncio
 import datetime
@@ -59,13 +60,13 @@ class Marketplace(BasicCog, name='marketplace'):
                 description=f'''
     {f'**{data["name"]}**' if data["name"] is not None else ''}
     {price_text if price and data['orders'][0]['base_price'] != '0' else ''} {rarity_text if rarity_text is not None else ''}
-    · Floor price: **{data['collection']['stats']['floor_price']} Ξ**
+· Floor price: **{data['collection']['stats']['floor_price']} Ξ**
 
-    · Items: **{int(data['collection']['stats']['count'])}**
+· Items: **{int(data['collection']['stats']['count'])}**
 
-    · Owners: **{int(data['collection']['stats']['num_owners'])}**
+· Owners: **{int(data['collection']['stats']['num_owners'])}**
 
-    · Volume: **{float_round(data['collection']['stats']['total_volume'], 1)} Ξ**
+· Volume: **{float_round(data['collection']['stats']['total_volume'], 1)} Ξ**
                 ''',
                 colour=GREEN_COLOR
             ).set_image(url=data['image_url']).set_footer(text='Ξther City Network')
@@ -73,7 +74,8 @@ class Marketplace(BasicCog, name='marketplace'):
             msg = await f_interaction.user.send(
                 embed=emb,
                 components=[
-                    Button(style=ButtonStyle.green, label='Publish')
+                    Button(style=ButtonStyle.green, label='Publish'),
+                    Button(style=ButtonStyle.red, label='Cancel')
                 ]
             )
             return msg, emb
@@ -89,6 +91,14 @@ class Marketplace(BasicCog, name='marketplace'):
             await self._error(
                 'check_link incorrect link', f_interaction.user.id, f_interaction.user.name
             )
+
+    async def _json(self: "Marketplace", data: dict) -> None:
+        """
+        Function for getting the json from opensea
+        """
+        print(data)
+        with open('opensea.json', 'w') as f:
+            json.dump(data, f, indent=4)
 
     async def check_link(
         self: "Marketplace", f_interaction: Interaction
@@ -122,22 +132,28 @@ class Marketplace(BasicCog, name='marketplace'):
 
                 try:
                     async with ClientSession() as session:
-                        url = f"https://api.opensea.io/api/v1/asset/{str(link.split('/')[4])}/{str(link.split('/')[5])}/"
+                        async with session.get(
+                            f"https://api.opensea.io/api/v1/asset/{str(link.split('/')[4])}/{str(link.split('/')[5])}/"
+                        ) as response:
 
-                        response = requests.request("GET", url)
+                            if response.status != 200:
+                                raise ValueError
 
-                        if response.status_code != 200:
-                            raise ValueError
+                            data = await response.json()
 
-                        data = response.json()
+                            await self._json(data)
 
-                        if len(data) <= 0:
-                            raise ValueError
+                            if len(data) <= 0:
+                                raise ValueError
 
-                        await session.close()
-                        return data, link
+                            await session.close()
+                            return data, link
 
-                except Exception:
+                except Exception as e:
+                    await self._error(
+                        'check_link error: ', e, f_interaction.user.id, f_interaction.user.name
+                    )
+
                     errors += 1
                     await self.__error_msg(
                         errors, f_interaction
@@ -168,6 +184,15 @@ class Marketplace(BasicCog, name='marketplace'):
             if clan is None:
                 return None
 
+            dm = await f_interaction.author.create_dm()
+
+            await f_interaction.respond(
+                embed=discord.Embed(
+                    description=f"Please go to the [bot's private messages](https://discord.com/channels/@me/{dm.id})",
+                    color=discord.Colour.dark_blue()
+                )
+            )
+
             await self._log(
                 'marketplace local used', f_interaction.user.id, 
                 f_interaction.user.name, f_interaction.guild.id, 
@@ -189,6 +214,15 @@ class Marketplace(BasicCog, name='marketplace'):
                 except asyncio.TimeoutError:
                     await timeout_error(f_interaction.user)
                     return None
+
+                if msg_interaction.component.label == 'Cancel':
+                    await invisible_respond(msg_interaction)
+                    await send_embed(
+                            text='You have canceled the sending of your NFT.',
+                            color=RED_COLOR,
+                            member=f_interaction.user
+                    )
+                    return False
 
                 if msg_interaction.component.label == 'Publish':
                     await invisible_respond(msg_interaction)
@@ -384,6 +418,15 @@ class Marketplace(BasicCog, name='marketplace'):
                     ).set_footer(text='Ξther City Network'))
                 return None
 
+            dm = await f_interaction.author.create_dm()
+
+            await f_interaction.respond(
+                embed=discord.Embed(
+                    description=f"Please go to the [bot's private messages](https://discord.com/channels/@me/{dm.id})",
+                    color=discord.Colour.dark_blue()
+                )
+            )
+
             await self._log(
                 'marketplace global used', f_interaction.user.id, 
                 f_interaction.user.name, f_interaction.guild.id,
@@ -405,6 +448,15 @@ class Marketplace(BasicCog, name='marketplace'):
                 except asyncio.TimeoutError:
                     await timeout_error(f_interaction.user)
                     return None
+
+                if msg_interaction.component.label == 'Cancel':
+                    await invisible_respond(msg_interaction)
+                    await send_embed(
+                            text='You have canceled the sending of your NFT.',
+                            color=RED_COLOR,
+                            member=f_interaction.user
+                    )
+                    return False
 
                 if msg_interaction.component.label == 'Publish':
                     await invisible_respond(msg_interaction)

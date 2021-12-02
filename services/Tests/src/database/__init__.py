@@ -176,9 +176,3 @@ db.bind(
     port=5432
 )
 db.generate_mapping(create_tables=True, check_tables=True)
-
-
-# with db_session:
-#     clan = Clans.get(_id=1)
-#     clan.channel_engage_id = '913121228829646859'
-#     clan.channel_voice_id = '913122010715029584'

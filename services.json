@@ -1,3 +1,8 @@
 {
-    "process_ids": {}
+    "process_ids": {
+        "Tests": 5509,
+        "Rating": 5510,
+        "Defence": 5511,
+        "General": 5508
+    }
 }
