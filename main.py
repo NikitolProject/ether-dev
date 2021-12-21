@@ -29,12 +29,23 @@ def remove_services_json(dir) -> None:
         f.truncate()
 
 
+def load_service(dir) -> None:
+    with open(f'{cur_dir}/services/{dir}/service.json', 'r+') as f:
+        return json.loads(f.read())
+       
+
 def load_all_services() -> None:
     for dir in os.listdir(f'{cur_dir}/services'):
         if not os.path.isdir(os.path.join(f'{cur_dir}/services', dir)) and \
           not os.path.exists(os.path.join(f'{cur_dir}/services', dir, 'service.json')):
             continue
-        process = Popen(['python3', f'{cur_dir}/services/{dir}/bot.py'])
+        data = load_service(dir)
+
+        if data['language'] == 'python':
+            process = Popen(['python3', f'{cur_dir}/services/{dir}/bot.py'])
+        elif data['language'] == 'javascript':
+            process = Popen(['node', '--es-module-specifier-resolution=node', f'{cur_dir}/services/{dir}/src/server.js'])
+
         add_services_json(process, dir)
 
 
@@ -61,8 +72,7 @@ def services(ctx) -> None:
         services = json.load(f)
 
     if len(services["process_ids"]) == 0:
-        click.echo('No services running.')
-        return None
+        return click.echo('No services running.')
 
     for dir, pid in services["process_ids"].items():
         click.echo(f'Service {dir} -> {pid}')
@@ -75,10 +85,16 @@ def start(ctx) -> None:
     Start current service/all services.
     """
     if ctx.parent.params['service'] == 'all':
-        load_all_services()
-    else:
+        return load_all_services()
+
+    data = load_service(ctx.parent.params['service'])
+
+    if data['language'] == 'python':
         process = Popen(['python3', f'{cur_dir}/services/{ctx.parent.params["service"]}/bot.py'])
-        add_services_json(process, ctx.parent.params["service"])
+    elif data['language'] == 'javascript':
+        process = Popen(['node', '--es-module-specifier-resolution=node', f'{cur_dir}/services/{ctx.parent.params["service"]}/src/server.js'])
+        
+    add_services_json(process, ctx.parent.params["service"])
 
 
 @service.command()

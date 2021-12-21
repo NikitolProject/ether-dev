@@ -1,3 +1,4 @@
+import os
 import asyncio
 import aiohttp
 
@@ -82,6 +83,8 @@ class Security(BasicCog, name="security"):
         await interaction.author.send(
             embed=embed, file=file
         )
+
+        os.remove(f'captcha_{interaction.author.id}.png')
 
         while True:
             try:
@@ -171,7 +174,9 @@ class Security(BasicCog, name="security"):
 
                 await member.add_roles(
                     guild.get_role(int(m_guild.role_ether)) if \
-                        Members.get(id=str(member.id)).ether_status else None,
+                        Members.get(id=str(member.id)).ether_status else None
+                )
+                await member.add_roles(
                     guild.get_role(int(m_guild.role_nods)) if \
                         Members.get(id=str(member.id)).nods_status else None
                 )

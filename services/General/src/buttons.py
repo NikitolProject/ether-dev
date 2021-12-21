@@ -143,6 +143,7 @@ class Buttons(BasicCog, name='buttons'):
             'Balance',
             'Send',
             'City',
+            'NFT',
             'Join',
             'Top up',
             'Refresh',
@@ -223,14 +224,23 @@ class Buttons(BasicCog, name='buttons'):
                         self.used_create_city.remove(interaction.user.id)
                         await self.send_button_error(e, interaction)
 
-        elif interaction.component.label == 'Join':
-            if await self.check_member_in_clan(interaction, 'channel_join_id') == 0:
+        elif interaction.component.label == 'NFT':
+            if interaction.user == interaction.guild.owner:
                 try:
-                    stat = await self.bot.get_cog('clans').join_to_clan(interaction)
+                    stat = await self.bot.get_cog('server_setup').create_nft(interaction)
                     if stat is None:
                         await asyncio.sleep(600)
                 except Exception as e:
                     await self.send_button_error(e, interaction)
+
+        elif interaction.component.label == 'Join':
+            if await self.check_member_in_clan(interaction, 'channel_join_id') == 0:
+                # try:
+                stat = await self.bot.get_cog('clans').join_to_clan(interaction)
+                if stat is None:
+                    await asyncio.sleep(600)
+                # except Exception as e:
+                #     await self.send_button_error(e, interaction)
 
         elif interaction.component.label == 'Top up':
             if interaction.user.id not in self.user_used:
@@ -322,6 +332,14 @@ class Buttons(BasicCog, name='buttons'):
                             self.user_used.remove(interaction.user.id)
                             self.used_global.remove(interaction.user.id)
                             await self.send_button_error(e, interaction)
+                    else:
+                        await interaction.respond(
+                            embed=discord.Embed(
+                                title="Delay error",
+                                description="The delay after using the button has not expired yet!",
+                                color=discord.Color.red()
+                            )
+                        )
 
 
 def setup(bot: commands.Bot) -> None:

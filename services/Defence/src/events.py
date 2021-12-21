@@ -587,22 +587,22 @@ class Defence(BasicCog, name='defence'):
                     return None
 
                 for _id in m_guild.clans:
-                    with contextlib.suppress(Exception):
-                        clan: Clans = Clans.get(id=int(_id))
-                        
-                        clan_roles = {
-                            "role_owner_id": int(clan.role_owner_id),
-                            "role_support_id": int(clan.role_support_id),
-                            "role_nods_id": int(clan.role_nods_id),
-                        }
+                    clan: Clans = Clans.get(_id=int(_id))
+                    
+                    clan_roles = {
+                        "role_owner_id": int(clan.role_owner_id),
+                        "role_support_id": int(clan.role_support_id) if clan.role_support_id else None,
+                        "role_nods_id": int(clan.role_nods_id),
+                    }
 
-                        for k, v in clan_roles.items():
-                            if role.id == v:
-                                if role.guild.get_role(role.id) is not None:
-                                    if after.id in clan_roles[k]:
+                    for k, v in clan_roles.items():
+                        if role.id == v:
+                            if role.guild.get_role(role.id) is not None:
+                                if str(after.id) in clan.nods and k == "role_nods_id" or \
+                                    str(after.id) in clan.supports and k == "role_support_id":
                                         await after.add_roles(role)
                                         continue
-                                    await after.remove_roles(role)
+                                await after.remove_roles(role)
 
     @commands.Cog.listener()
     async def on_guild_role_update(self, before, after) -> None:

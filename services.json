@@ -1,8 +1,9 @@
 {
     "process_ids": {
-        "Tests": 5509,
-        "Rating": 5510,
-        "Defence": 5511,
-        "General": 5508
+        "General": 91708,
+        "Tests": 91709,
+        "Rating": 91710,
+        "Defence": 91711,
+        "WalletConnect": 91712
     }
 }

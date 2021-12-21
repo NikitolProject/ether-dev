@@ -178,6 +178,10 @@ class Rating(BasicCog, name='rating'):
             m_guild.role_nods is None:
                 return None
 
+        if m_guild.role_ether == '' and \
+            m_guild.role_nods == '':
+                return None
+
         if guild.get_role(int(m_guild.role_ether)) is None and \
             guild.get_role(int(m_guild.role_nods)) is None:
                 return None

@@ -372,7 +372,9 @@ class ClansCog(BasicCog, name='clans'):
         orm.commit()
 
         with contextlib.suppress(Exception):
-            await f_interaction.respond(embed=emb)
+            channel: TextChannel = await self.bot.get_channel(id=clan.channel_statistics_id)
+            message: Message = await channel.fetch_message(id=clan.msg_statistics_id)
+            await message.edit(embed=emb)
             channel = f_interaction.guild.get_channel(int(clan.channel_logs_id))
             await send_embed(
                 text=f'{f_interaction.user.mention} just updated our stats and won 1 ECT\n',
@@ -396,6 +398,54 @@ class ClansCog(BasicCog, name='clans'):
         self.message_banned.remove(f_interaction.message.id)
         await asyncio.sleep(17100)
         self.refresh_bans[clan.token].remove(f_interaction.user.id)
+
+
+    @tasks.loop(minutes=1)
+    async def _update_clans_stats(self: "ClansCog") -> None:
+        """
+        Updating statistics of all clans
+        """
+        await self._log(
+            "Updating statistics of all clans."
+        )
+
+        for clan in Clans.select():
+            await self.__update_clan_stats(clan)
+
+    async def __update_clan_stats(self: "ClansCog", clan: Clans) -> None:
+        """
+        Updating statistics of clan
+        """
+        await self._log(
+            "Updating statistics of clan: ", clan.token
+        )
+        with orm.db_session:
+            rating: RatingClans = RatingClans.get(clan_token=clan.token)
+            rating.clan_rate = clan.rating
+            rating.total_exp = clan.total_exp
+            rating.members_count = clan.members_count
+            orm.commit()
+
+            vault0_tokens: float = sum(float(t.split(":")[1]) for t in clan.vault0)
+
+            emb = discord.Embed(
+                title=f'City Stats',
+                colour=INVISIBLE_COLOR,
+                description=f"**Rating**: {rating.clan_rate}\n"
+                            f"**City XP**: {rating.total_exp}\n"
+                            f"**DC**: {rating.members_count}\n"
+                            f"**Vault0**: {vault0_tokens} ECT\n"
+                            f"**Vault1**: {clan.vault1} ECT\n"
+                            f"**Vaults**: {vault0_tokens + float(clan.vault1)} ECT\n"
+                            f"**Battles count**: *soon*\n"
+                            f"**Earned from battles**: *soon*\n\n\n\n"
+                            f"You can update stats by clicking on the 'Refresh' button below.\n"
+                            f"The first one to update with new details will win 1 ECT. But be careful with multi clicking.\n"
+                            f"You have 5 attempts before a cooldown."
+            )
+            channel: TextChannel = await self.bot.get_channel(id=clan.channel_statistics_id)
+            message: Message = await channel.fetch_message(id=clan.msg_statistics_id)
+            await message.edit(embed=emb)
 
     @tasks.loop(hours=random.randint(1, 24))
     async def _random_token_reward(self: "ClansCog") -> None:
@@ -753,7 +803,7 @@ class ClansCog(BasicCog, name='clans'):
             if float(Members.get(id=str(f_interaction.user.id)).tokens) < 5.0:
                 await f_interaction.respond(
                     embed=discord.Embed(
-                        description='I couldn\'t reserve 5 ECT for you to join the city. Please top up the wallet in order to proceed.',
+                        description=f"My apologies {f_interaction.user.name}, it seems that you don't have enough ECT in your wallet to join this city. Please add funds to your wallet and try again.",
                         colour=RED_COLOR
                     ).set_footer(text='Ξther City Network'))
                 return True
@@ -775,9 +825,10 @@ class ClansCog(BasicCog, name='clans'):
                 return True
 
             msg = await send_embed(
-                text='Great, I just need your confirmation to deposit 5 ECT into the city\'s vault.\n'
-                        'It will make you a co-owner of the city.\n'
-                        'So the daily profit collected by the city will be distributed to you based on your share percentage.',
+                text="Excellent! Now, by becoming a member of this city, "
+                     "you'll gain a stake in the city and you'll share in "
+                     "the daily profit based on your share percentage. "
+                     "Would you like to proceed?",
                 color=GREEN_COLOR,
                 member=f_interaction.user,
                 interaction=f_interaction
@@ -793,7 +844,7 @@ class ClansCog(BasicCog, name='clans'):
             await msg.edit(
                 components=[
                     [
-                        Button(style=ButtonStyle.green, label=' Join'),
+                        Button(style=ButtonStyle.green, label='Agree'),
                         Button(style=ButtonStyle.red, label='Decline')
                     ]
                 ]
@@ -805,19 +856,26 @@ class ClansCog(BasicCog, name='clans'):
                     check=lambda m: m.channel.type == discord.ChannelType.private and m.message == msg and m.user == f_interaction.user
                 )
             except asyncio.TimeoutError:
+                await send_embed(
+                    title="Time is up!",
+                    text="I apologize, your attempts have triggered a system cooldown. "
+                         "Please ensure you add funds to your wallet and try again in 10 minutes.",
+                    color=RED_COLOR,
+                    member=f_interaction.user
+                )
                 await msg.delete()
                 return True
 
             if msg_interaction.component.label == 'Decline':
                 await send_embed(
-                    text='Declined?! That\'s fine. You can join at any time.',
+                    text="That's disappointing, please return here any time if you change your mind.",
                     color=RED_COLOR,
                     member=f_interaction.user,
                     interaction=msg_interaction)
                 await invisible_respond(msg_interaction)
                 return True
 
-            if msg_interaction.component.label == ' Join':
+            if msg_interaction.component.label == 'Agree':
                 await invisible_respond(msg_interaction)
                 if float(Members.get(id=str(f_interaction.user.id)).tokens) >= 5:
                     await self.join_to_clan_accept(f_interaction, clan)
@@ -825,8 +883,9 @@ class ClansCog(BasicCog, name='clans'):
 
                 errors: int = 1
                 emb = discord.Embed(
-                    description='That\'s strange. I was checking your balance before.\n'
-                                'But now you don\'t have enough ECT to join the city. You can top up your wallet and retry afterwards.',
+                    description="How strange, you don't seem to have enough ECT "
+                                "in your wallet to join the city. Please add funds "
+                                "to your wallet and try again.",
                     colour=RED_COLOR
                 ).set_footer(text=f'{errors}/5 attempts')
                 _msg = await f_interaction.user.send(
@@ -930,11 +989,12 @@ class ClansCog(BasicCog, name='clans'):
                 channel=f_interaction.guild.get_channel(int(clan.channel_logs_id)))
 
             await send_embed(
-                text=f'Look what you\'ve done:\n'
-                    f'1. Made {clan.name} more powerful\n'
-                    f'2. Staked 5 ECT into the city\'s vault\n'
-                    f'3. Got a new role - Nods\n'
-                    f'4. Received 100 XP',
+                title="Success!",
+                text=f"You've become a citizen of {clan.name}.\n"
+                     f"- You've helped this city grow!\n"
+                     f"- New role unlocked: Nods\n"
+                     f"- Your 5 ECT has been staked into the city's vault\n"
+                     f"- You've earned 100 XP",
                 color=GREEN_COLOR,
                 member=member
             )
@@ -972,7 +1032,8 @@ class ClansCog(BasicCog, name='clans'):
 
                 clan: Clans = Clans.get(channel_wallet_id=str(f_interaction.channel.id)) if Clans.select().exists() else None
                 
-                description = f'ECT: {user.tokens}\n'
+                description = f"Please hold while I take a look...\nFound it, here's your current balance:\n"
+                description += f'ECT: {user.tokens}\n'
                 description += f'Level: {user.lvl_rank}\n'
                 description += f'XP: {int(user.exp_all) + int(user.exp_rank)}\n'
                 description += f'XP to level {int(user.lvl_rank) + 1}: {to_exp - int(user.exp_rank)}\n'
@@ -1010,7 +1071,9 @@ class ClansCog(BasicCog, name='clans'):
 
                 await f_interaction.respond(
                     embed=discord.Embed(
-                        description='Your balance is 0 ECT. I cannot send 0 ECT to anyone. Even to myself.',
+                        description="I apologize, you don't currently have any ECT. "
+                                    "It would be helpful to have ECT in your wallet "
+                                    "before sending any, don't you think?",
                         colour=RED_COLOR
                     ).set_footer(text='Ξther City Network')
                 )
@@ -1026,8 +1089,12 @@ class ClansCog(BasicCog, name='clans'):
             )
 
             await send_embed(
-                text='Reply with recipient\'s id. To get user\'s id use this guide\n'
-                        'https://support.discord.com/hc/en-us/articles/206346498-Where-can-I-find-my-User-Server-Message-ID-',
+                text="Very well, who is the lucky recipient?\n"
+                     "Please visit the Discord knowledgebase to "
+                     "learn how to select a user ID  "
+                     "https://support.discord.com/hc/en-us/artic"
+                     "les/206346498-Where-can-I-find-my-User-Ser"
+                     "ver-Message-ID-",
                 color=INVISIBLE_COLOR,
                 interaction=f_interaction,
                 member=f_interaction.user
@@ -1043,7 +1110,17 @@ class ClansCog(BasicCog, name='clans'):
                         check=lambda m: m.author == f_interaction.user and m.channel.type == discord.ChannelType.private
                     )
                 except asyncio.TimeoutError:
-                    await timeout_error(f_interaction.user)
+                    await f_interaction.respond(
+                        embed=discord.Embed(
+                            title='Timeout',
+                            description="I'm sorry, your repeated attempts "
+                                        "have triggered a system cooldown. "
+                                        "Please check the Ether City database "
+                                        "to help you find your desired recipient "
+                                        "and try again.",
+                            colour=RED_COLOR
+                        )
+                    )
                     return None
 
                 try:
@@ -1061,6 +1138,14 @@ class ClansCog(BasicCog, name='clans'):
 
                 except Exception:
                     errors += 1
+
+                    await send_embed(
+                        title="Incorrect ID",
+                        text="Please try again.",
+                        color=RED_COLOR,
+                        channel=f_interaction.user
+                    )
+
                     if errors < 5:
                         error_msg = await self.__msg_error(
                             errors, f_interaction
@@ -1068,8 +1153,8 @@ class ClansCog(BasicCog, name='clans'):
                     continue
 
                 await send_embed(
-                    text=f'Your current balance is **{Members.get(id=str(f_interaction.user.id)).tokens}** ECT\n'
-                            f'How many ECT would you like to send?',
+                    text=f"Your current balance is {Members.get(id=str(f_interaction.user.id)).tokens} "
+                         f"ECT. Please enter the amount you'd like to send.",
                     color=INVISIBLE_COLOR,
                     member=f_interaction.user
                 )
@@ -1095,7 +1180,15 @@ class ClansCog(BasicCog, name='clans'):
                     check=lambda m: m.author == f_interaction.user and m.channel.type == discord.ChannelType.private
                 )
             except asyncio.TimeoutError:
-                await timeout_error(f_interaction.user)
+                await send_embed(
+                    title='Timeout',
+                    text="Apologies, it seems that your repeated "
+                         "attempts have triggered a system cooldown. "
+                         "Pease check the amount availailable in your "
+                         "wallet and try again in 10 minutes.",
+                    color=RED_COLOR,
+                    member=f_interaction.user
+                )
                 return False
 
             try:
@@ -1104,6 +1197,15 @@ class ClansCog(BasicCog, name='clans'):
 
             except ValueError:
                 errors += 1
+                await send_embed(
+                    title="Incorrect amount",
+                    text="There's a problem. You have insufficient "
+                         "funds to cover the amount you entered. Please "
+                         "adjust the amount or add funds to your wallet..",
+                    color=RED_COLOR,
+                    channel=f_interaction.user
+                )
+
                 if errors < 5:
                     error_msg = await send_embed(
                         title='Ok! There is something wrong.',
@@ -1126,14 +1228,16 @@ class ClansCog(BasicCog, name='clans'):
                 continue
 
             emb = discord.Embed(
-                description=f'Just to be sure. You want to send **{cash}** ECT to {member.mention}?',
+                description=f'Alright. Just to confirm, you '
+                            f'want to send **{cash} ECT** to '
+                            f'{member.mention}. Correct?',
                 colour=GREEN_COLOR
             )
             msg = await f_interaction.user.send(
                 embed=emb,
                 components=[
                     [
-                        Button(style=ButtonStyle.green, label=' Send'),
+                        Button(style=ButtonStyle.green, label='Agree'),
                         Button(style=ButtonStyle.red, label='Decline')
                     ]
                 ]
@@ -1145,18 +1249,26 @@ class ClansCog(BasicCog, name='clans'):
                     check=lambda m: m.author == f_interaction.user and m.channel.type == discord.ChannelType.private and m.message == msg
                 )
             except asyncio.TimeoutError:
-                await timeout_error(f_interaction.user)
+                await send_embed(
+                    title='Timeout',
+                    text="I'm sorry, you've made too many "
+                         "failed attempts and a system cooldown "
+                         "has been initiated. Please check your "
+                         "wallet balance and try again later.",
+                    color=RED_COLOR,
+                    member=f_interaction.user
+                )
                 return False
 
             if msg_interaction.component.label == 'Decline':
                 await invisible_respond(msg_interaction)
                 await send_embed(
-                    text='Declined?! That\'s fine. You can send ECT at any time.',
+                    text="Really? That's fine. Return here if you change your mind.",
                     color=RED_COLOR,
                     member=f_interaction.user)
                 return False
 
-            elif msg_interaction.component.label == ' Send':
+            elif msg_interaction.component.label == 'Agree':
                 await invisible_respond(msg_interaction)
                 with orm.db_session:
                     tokens: float = float(Members.get(id=str(f_interaction.user.id)).tokens)
@@ -1177,16 +1289,17 @@ class ClansCog(BasicCog, name='clans'):
                     )
 
                     await send_embed(
-                        title='Perfect!',
-                        text=f'Your **{cash}** ECT has been sent to {member.mention}\n'
-                                f'Balance: {Members.get(id=str(f_interaction.user.id)).tokens} ECT',
+                        title='Success!',
+                        text=f"You've sent **{cash}** ECT to {member.mention}. "
+                             f"They're lucky to have such a generous friend!",
                         color=GREEN_COLOR,
                         member=f_interaction.user
                     )
 
                     await send_embed(
-                        title='Nice! Money has arrived.',
-                        text=f'{f_interaction.user.mention} sent you **{cash}** ECT',
+                        title="You've received ECT!",
+                        text=f"{member.mention} has sent you **{cash}** ECT. "
+                             f"Be sure to send them a message to say thank you.",
                         color=GREEN_COLOR,
                         member=member
                     )
@@ -1212,12 +1325,14 @@ class ClansCog(BasicCog, name='clans'):
         self: "ClansCog", _errors: int, tokens: int, f_interaction: Interaction
     ) -> typing.Union[discord.Message, None]:
         _msg = await send_embed(
-            title='Insufficient funds',
-            text=f'Balance: **{tokens}**\n'
-                    f'Please, reply with correct ECT amount that you want to send',
+            title="Insufficient funds",
+            text=f"Hmm. You no longer have sufficient "
+                 f"ECT to send to that player. Did you "
+                 f"buy something while we were talking?",
             color=RED_COLOR,
             member=f_interaction.user,
-            footer=f'{_errors}/5 attempts')
+            footer=f'{_errors}/5 attempts'
+        )
         return _msg
 
     async def __msg_error(
@@ -1242,7 +1357,9 @@ class ClansCog(BasicCog, name='clans'):
             if float(Members.get(id=str(f_interaction.user.id)).tokens) <= 0:
                 await f_interaction.respond(
                     embed=discord.Embed(
-                        description='Your balance is 0 ECT. I cannot top up city\'s Vault0 with 0 ECT. People will riot.',
+                        description="My apologies, you don't have the necessary "
+                                    "funds to add to your city's vault. Here's a "
+                                    "helpful tip: You should try having ECT in your wallet.",
                         colour=RED_COLOR
                     ).set_footer(text='Ξther City Network')
                 )
@@ -1253,9 +1370,10 @@ class ClansCog(BasicCog, name='clans'):
 
             await send_embed(
                 title='Top up',
-                text=f'Balance: **{Members.get(id=str(f_interaction.user.id)).tokens}** ECT\n'
-                    f'Vault0 share: {user[0].split(":")[1]} ECT ({user[0].split(":")[2]}%)\n'
-                    f'Reply with the amount of ECT you want to top up the Vault0 with',
+                text=f"Excellent! Please let me know the amount you'd like to add to your vault.\n"
+                     f"Your current balance: {Members.get(id=str(f_interaction.user.id)).tokens}\n"
+                     f"Your Current Vault Share: {user[0].split(':')[1]} ECT ({user[0].split(':')[2]}%) \n"
+                     f"Enter ECT amount:",
                 color=INVISIBLE_COLOR,
                 interaction=f_interaction,
                 member=f_interaction.user
@@ -1279,22 +1397,30 @@ class ClansCog(BasicCog, name='clans'):
                         or m.author.id == 905453765275029514 and m.channel.type == discord.ChannelType.private
                     )
                 except asyncio.TimeoutError:
-                    await timeout_error(f_interaction.user)
+                    await f_interaction.user.send(
+                        embed=discord.Embed(
+                            title="There's a problem",
+                            description="Your repeated attempts have triggered "
+                                        "a cooldown. Please check your balance "
+                                        "and retry in 10 minutes.",
+                            color=RED_COLOR
+                        )
+                    )
                     return None
 
-                try:
-                    if cash.author.id == 905453765275029514:
-                        print("OOOOOOOOOOOOOOOOOOOOOK!")
+                if cash.author.id == 905453765275029514:
                         return None
 
+                try:
                     cash = float(cash.content)
                     cash = float_round(cash, 9)
+
                 except ValueError:
                     errors += 1
                     if errors < 5:
                         await send_embed(
-                            title='Ok! There is something wrong.',
-                            text='Please, retry',
+                            title="That's strange, you don't seem to have enough ECT. ",
+                            text="Please check your balance and try again.\nBalance: ",
                             color=RED_COLOR,
                             member=f_interaction.user,
                             footer=f'{errors}/5 attempts'
@@ -1307,9 +1433,10 @@ class ClansCog(BasicCog, name='clans'):
                     errors += 1
                     if errors < 5:
                         await send_embed(
-                            text='That\'s strange. I was checking your balance before.\n'
-                                f' But now it\'s less ({tokens}) than the requested amount.\n'
-                                ' Please reply with new ECT amount or deposit ECT into your wallet.',
+                            text="Very strange, you no longer seem to have enough "
+                                 "ECT to add to the city's vault. Perhaps there's "
+                                 "a hole in your digital wallet. Please check your"
+                                 " balance and try again.\nEnter ECT amount:",
                             color=RED_COLOR,
                             member=f_interaction.user,
                             footer=f'{errors}/5 attempts'
@@ -1317,7 +1444,9 @@ class ClansCog(BasicCog, name='clans'):
                     continue
 
                 emb = discord.Embed(
-                    description=f'Just to be sure. You want to top up Vault0 of {clan.name} with **{cash}** ECT',
+                    description=f"Alright. I want to confirm that you want "
+                                f"to add funds to {clan.name}'s main vault "
+                                f"with {cash} ECT",
                     colour=GREEN_COLOR
                 )
                 msg = await f_interaction.user.send(
@@ -1341,6 +1470,15 @@ class ClansCog(BasicCog, name='clans'):
 
                 if await self.__replenishment_clan_storage(msg_interaction, f_interaction, cash, errors, clan):
                     return None
+            await send_embed(
+                title="I'm sorry",
+                text="It seems that you've triggered a "
+                     "system cooldown. Now I have to fix "
+                     "it. Please make sure you have enough "
+                     "in your wallet before adding to your vault.",
+                color=RED_COLOR,
+                member=f_interaction.user
+            )
 
     async def __replenishment_clan_storage(
         self: "ClansCog", msg_interaction: Interaction, f_interaction: Interaction, 
@@ -1350,7 +1488,7 @@ class ClansCog(BasicCog, name='clans'):
             if msg_interaction.component.label == 'Decline':
                 await invisible_respond(msg_interaction)
                 await send_embed(
-                    text='Declined?! That\'s fine. You can top up the Vault0 at any time.',
+                    text="Really? That's fine. Please return here later if you change your mind. ",
                     color=RED_COLOR,
                     member=f_interaction.user
                 )
@@ -1394,8 +1532,8 @@ class ClansCog(BasicCog, name='clans'):
                     if user.split(":")[0] == str(f_interaction.user.id):
                         await send_embed(
                             title='Nice!',
-                            text=f'You\'ve topped up city\'s Vault0 with **{cash}** ECT successfully.\n'
-                                f'Vault0 share: {user.split(":")[1]} ECT ({user.split(":")[2]}%)',
+                            text=f"Well done! You've added **{cash} ECT** to this city's vault.\n"
+                                 f"Your new vault share: {user.split(':')[1]} ECT ({user.split(':')[2]}%)",
                             color=GREEN_COLOR,
                             member=f_interaction.user
                         )

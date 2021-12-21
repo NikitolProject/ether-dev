@@ -99,6 +99,12 @@ class Clans(db.Entity):
     members_rating = Optional(StrArray)
 
 
+class SmartContracts(db.Entity):
+    _id = PrimaryKey(int, auto=True)
+    clan_id = Optional(str)
+    contracts = Optional(Json)
+
+
 class RatingClans(db.Entity):
     _id = PrimaryKey(int, auto=True)
     clan_id = Optional(str)

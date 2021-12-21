@@ -453,14 +453,11 @@ async def create_city_setup_msg(
         title='Build your city',
         description=
         f'''
-Welcome to the Ether City Network. 
-I am the DeClan Bot. And I am here to help you to build the city in this Discord Server. In order to start you need 2 things:
-
-1. The name of the city
-2. 100 ECT to stake in the city's vault
-
-To proceed press the "City" button below.
-If you need more details go to {ch_help.mention} channel
+Greetings, and Welcome to Ether City! You can call me DeClan, 
+I'm your guide and I'll be helping you navigate all that's available 
+to you here. First things first. I'd like to help you build your very 
+own city on the Discord Server. I'll need 100 ECT from you to fund the 
+city's main vault.
         ''',
         color=0x2f3136,
     )
@@ -469,7 +466,8 @@ If you need more details go to {ch_help.mention} channel
         embed=emb, 
         components=[
             [
-                Button(style=ButtonStyle.green, label='City')
+                Button(style=ButtonStyle.green, label='City'),
+                Button(style=ButtonStyle.blue, label='NFT'),
             ]
         ]
     )
@@ -511,10 +509,9 @@ async def create_join_msg(channel: TextChannel, name: str):
         embed=discord.Embed(
             title=f'Welcome to {name}!',
             description='''
-I am the DeClan bot. And I am here to help you to join the city that was built in this
-Discord Server. By joining a city you boost its economy and earn Ether City Tokens.
-You can join as many cities as you'd like. All you need is 5 ECT in your Ether City wallet.
-To create one go to https://discord.com/invite/ethercity
+My name is DeClan. I'm here to help you become a citizen of this city. 
+Becoming a citizen helps boost the city's economy and helps you become a part of its growth. 
+Joining a city costs 5 ECT and you can join as many cities as you want. Would you like to join this city?
 
 Then press the "Join" button below and follow the instructions.
             ''',
@@ -535,13 +532,10 @@ async def create_wallet_msg(channel: TextChannel) -> discord.Message:
     """
     return await channel.send(
         embed=discord.Embed(
-            title='This is your personal wallet. And here are 3 things you can do with it:',
-            description=
-            '''
-1. Check balance
-2. Send ECT to another DC (Ethers, Nods, Vi1) within the Ether City Network
-3. Top Up city's Vault0 to increase your share
-            ''',
+            title='This is your wallet.',
+            description="Here, you can check your balance, "
+                        "send funds to other players, or add "
+                        "funds to your city's main Vault.",
             colour=INVISIBLE_COLOR
         ),
         components=[

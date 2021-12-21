@@ -26,6 +26,22 @@ class Marketplace(BasicCog, name='marketplace'):
         """
         Function for sending a message to the marketplace
         """
+        slug: str = "-".join(data['asset_contract']["name"].lower().split(' '))
+
+        async with ClientSession() as session:
+            async with session.get(
+                f"https://api.opensea.io/api/v1/collection/{slug}/stats"
+            ) as response:
+                if response.status != 200:
+                    raise ValueError
+
+                stats = await response.json()
+
+                if len(stats) <= 0:
+                    raise ValueError
+
+                await session.close()
+            
         with orm.db_session:
             price = False
             price_text = f"\n· Price: **{int(data['orders'][-1]['base_price']) / 1000000000000000000} Ξ**\n" if price else None
@@ -60,7 +76,7 @@ class Marketplace(BasicCog, name='marketplace'):
                 description=f'''
     {f'**{data["name"]}**' if data["name"] is not None else ''}
     {price_text if price and data['orders'][0]['base_price'] != '0' else ''} {rarity_text if rarity_text is not None else ''}
-· Floor price: **{data['collection']['stats']['floor_price']} Ξ**
+· Floor price: **{stats['stats']['floor_price']} Ξ**
 
 · Items: **{int(data['collection']['stats']['count'])}**
 
@@ -133,7 +149,7 @@ class Marketplace(BasicCog, name='marketplace'):
                 try:
                     async with ClientSession() as session:
                         async with session.get(
-                            f"https://api.opensea.io/api/v1/asset/{str(link.split('/')[4])}/{str(link.split('/')[5])}/"
+                            f"https://api.opensea.io/api/v1/asset/{str(link.split('/')[4])}/{str(link.split('/')[5])}"
                         ) as response:
 
                             if response.status != 200:
@@ -305,13 +321,14 @@ class Marketplace(BasicCog, name='marketplace'):
                     clan_pros = 0
                     clan_cash = 0
 
-                    if int(clan.channel_marketplace_id) != f_interaction.channel.id:
+                    if int(clan.guild) != f_interaction.guild.id:
                         clan_pros = int(clan.total_exp) / total_exp * 100
                         clan_cash = 15 * clan_pros / 100
 
                         clan.vault1 = str(int(clan.vault1) + int(clan_cash))
                         clan.total_income_from_mark_global = str(clan_cash) if not clan.total_income_from_mark_global else str(int(clan.total_income_from_mark_global) + int(clan_cash))
                         orm.commit()
+
                     components = [
                         [
                             Button(style=ButtonStyle.URL, url=link, label='Link'),
@@ -321,7 +338,7 @@ class Marketplace(BasicCog, name='marketplace'):
                         ]
                     ]
 
-                    if int(clan.channel_marketplace_id) != f_interaction.channel.id:
+                    if int(clan.guild) != f_interaction.guild.id:
                         components[0].insert(1, Button(style=ButtonStyle.URL, url=clan_link, label=' City'))
 
                     await self.bot.get_channel(int(clan.channel_marketplace_id)).send(
@@ -329,7 +346,7 @@ class Marketplace(BasicCog, name='marketplace'):
                         components=components
                     )
 
-                    if int(clan.channel_marketplace_id) != f_interaction.channel.id:
+                    if int(clan.guild) != f_interaction.guild.id:
                         clan_list.append(f'{clan._id}.{+ clan_cash}')
                         mess = await send_embed(
                             title='Vault1 top up (Marketplace)',
@@ -344,9 +361,8 @@ class Marketplace(BasicCog, name='marketplace'):
                             date=datetime.now(),
                             clan=str(clan._id),
                             msg_id=str(mess.id),
-                            percent_of_clans=str(clan_pros),
                             received_tokens=str(clan_cash),
-                            new_vault1=clan.vault1,
+                            vault1=clan.vault1,
                         )
                         orm.commit()
 
@@ -384,10 +400,9 @@ class Marketplace(BasicCog, name='marketplace'):
             MarkGlobal(
                 user_id=str(f_interaction.user.id),
                 from_clan=str(Clans.get(channel_marketplace_id=str(f_interaction.channel.id))._id) if f_interaction.guild.id != discord_config['server_main'] else 'main_server',
-                msg_id=str(f_interaction.msg.id),
                 link=link,
                 date=str(datetime.now()),
-                clan_list=clan_list,
+                to_clans=clan_list,
                 msg_list=msg_list
             )
             orm.commit()
@@ -407,7 +422,6 @@ class Marketplace(BasicCog, name='marketplace'):
             member: Members = Members.get(
                 id=str(f_interaction.user.id),
             )
-            print(1)
 
             if float(member.tokens) < 15:
                 await f_interaction.respond(

@@ -25,10 +25,12 @@ class Rating(BasicCog, name='rating'):
     
     limit: int = 50
     limit_minutes_time: int = 1440
+    daily_drop: bool = False
 
-    def __init__(self: "BasicCog", bot: commands.Bot) -> None:
+    def __init__(self: "Rating", bot: commands.Bot) -> None:
         super().__init__(bot)  
         self.check_daily_exp_limit.start()
+        self.check_all_guilds.start()
 
     @tasks.loop(minutes=1)
     async def check_daily_exp_limit(self: "Rating") -> None:
@@ -46,9 +48,12 @@ class Rating(BasicCog, name='rating'):
                 orm.commit()
 
         t = datetime.now()
-        if '%s:%s' % (t.hour, t.minute) == '15:5':
+        if t.hour == 15 and t.minute in range(11) and not self.daily_drop:
             await self._log('start daily drop clans')
             await self.bot.get_cog('clans').reward_top_clans()
+            self.daily_drop = True
+        elif t.hour != 15 and self.daily_drop or t.minute not in range(11) and self.daily_drop:
+            self.daily_drop = False
 
     @check_daily_exp_limit.before_loop
     async def before_check_daily_exp_limit(self: "Rating") -> None:
@@ -162,6 +167,21 @@ class Rating(BasicCog, name='rating'):
         )
         await self.new_lvl(id)
 
+    @tasks.loop(minutes=1)
+    async def check_all_guilds(self: "Rating") -> None:
+        """
+        Check all guilds
+        """
+        with orm.db_session:
+            for guild in Guilds.select():
+                await self.check_members_guild(
+                    await self.bot.fetch_guild(int(guild.id))
+                )
+
+    @check_all_guilds.before_loop
+    async def before_check_all_guilds(self: "Rating") -> None:
+        await self.bot.wait_until_ready()
+
     async def check_members_guild(self: "Rating", guild: discord.Guild) -> None:
         """
         Checking server users for availability in the database/checking awards
@@ -207,6 +227,10 @@ class Rating(BasicCog, name='rating'):
 
         if m_guild.role_ether is None or \
             m_guild.role_nods is None:
+                return None
+
+        if m_guild.role_ether == '' or \
+            m_guild.role_nods == '':
                 return None
 
         if guild.get_role(int(m_guild.role_ether)) is None or \

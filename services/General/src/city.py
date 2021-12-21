@@ -22,20 +22,74 @@ class ServerSetup(BasicCog, name='server_setup'):
         if errors >= 5:
             return
         await send_embed(
-            text='That\'s not bad. But my algorithms do not let me register the name. Something is wrong with symbols? Anyways, try one more time, please.',
+            text=f"You were unsuccessful, {f_interaction.user.name}. Ether City's "
+                 f"guidelines won't allow me to register that name. Please try again.",
             title=f'{text}',
             color=RED_COLOR,
             channel=f_interaction.user,
             footer=f'{errors}/5 attempts'
         )
 
+    async def create_nft(self: "ServerSetup", f_interaction: Interaction) -> None:
+        """
+        Linking a smart contract to a city
+        """
+        await self._log(
+            f"{f_interaction.user} is trying to create a new smart contract"
+        )
+
+        with orm.db_session:
+            guild: Guilds = Guilds.get(id=str(f_interaction.guild.id))
+
+            if guild is None:
+                await f_interaction.respond(
+                    embed=discord.Embed(
+                        title='The city has not been created',
+                        description='Your city has not been created, please create a city first.',
+                        color=RED_COLOR
+                    )
+                )
+                return None
+
+            dm = await f_interaction.author.create_dm()
+
+            await f_interaction.respond(
+                embed=discord.Embed(
+                    description=f"Please go to the [bot's private messages](https://discord.com/channels/@me/{dm.id})",
+                    color=discord.Colour.dark_blue()
+                )
+            )
+
+            await send_embed(
+                text="Enter the address of the smart contract that you want to link to the city",
+                color=discord.Color.dark_blue(),
+                interaction=f_interaction,
+                member=f_interaction.user
+            )
+
+            try:
+                address = await f_interaction.wait_for(
+                    'message',
+                    check=lambda m: m.author == f_interaction.user,
+                    timeout=60
+                )
+            except asyncio.TimeoutError:
+                await send_embed(
+                    text='You have not entered the address in time. Try again.',
+                    color=discord.Color.dark_blue(),
+                    interaction=f_interaction,
+                    member=f_interaction.user
+                )
+                return None
+
+            pass
+
     async def create_city(self: "ServerSetup", f_interaction: Interaction) -> None:
         """
         Creating a city in Ether city(button)
         """
         with orm.db_session:
-            if Guilds.select().exists() and Guilds.get(id=str(f_interaction.guild.id)).verification and \
-                len(Members.get(id=str(f_interaction.user.id)).verification_owner_servers) > 1:
+            if Guilds.select().exists() and len(Members.get(id=str(f_interaction.user.id)).verification_owner_servers) >= 1:
                 await f_interaction.respond(
                     embed=discord.Embed(
                         description='1 server = 1 city and vice versa',
@@ -69,13 +123,23 @@ class ServerSetup(BasicCog, name='server_setup'):
             )
             errors = 0
 
-            await send_embed(
-                text='It all starts with the name. How would you like to call the city?\n'
-                        'P.S. - up to 30 symbols in the name',
-                color=INVISIBLE_COLOR,
-                interaction=f_interaction,
-                member=f_interaction.user)
-            await invisible_respond(f_interaction)
+            try:
+                await send_embed(
+                    text='Excellent, it looks like you have the necessary funds '
+                         'available to continue. Now for the fun part. Please enter '
+                         'a name for your city (up to 30 characters.)',
+                    color=INVISIBLE_COLOR,
+                    interaction=f_interaction,
+                    member=f_interaction.user)
+                await invisible_respond(f_interaction)
+            except discord.errors.Forbidden:
+                await f_interaction.respond(
+                    embed=discord.Embed(
+                        description='I\'m sorry, but I can\'t send you a message. Please allow me to send messages in your DMs.',
+                        colour=RED_COLOR
+                    ).set_footer(text='Ξther City Network')
+                )
+                return None
 
             while errors < 5:
                 try:
@@ -87,7 +151,7 @@ class ServerSetup(BasicCog, name='server_setup'):
                     await timeout_error(f_interaction.user)
                     return True
 
-                _name = _name.content
+                _name: str = _name.content
                 if _name is None:
                     errors += 1
                     await self.__emb_error(f_interaction, errors, 'Invalid name. Please retry!')
@@ -116,7 +180,7 @@ class ServerSetup(BasicCog, name='server_setup'):
                             return None
 
                 msg = await send_embed(
-                    text=f'Nice! We are 1 step away...or ahead...if you like. But I really need to know that we are on the same page here. Do you agree to build this amazing city?',
+                    text=f'I have good news, {_name} has been accepted by the Ether City registrar office. Everything is ready, {f_interaction.user.name}. Do you wish to continue and create this city?',
                     color=GREEN_COLOR,
                     member=f_interaction.user
                 )
@@ -124,7 +188,7 @@ class ServerSetup(BasicCog, name='server_setup'):
                     components=[
                         [
                             Button(style=ButtonStyle.green, label='Agree'),
-                            Button(style=ButtonStyle.red, label='Decline')
+                            Button(style=ButtonStyle.red, label='Disagree')
                         ]
                     ]
                 )
@@ -138,10 +202,10 @@ class ServerSetup(BasicCog, name='server_setup'):
                     await msg.delete()
                     return True
 
-                if msg_interaction.component.label == 'Decline':
+                if msg_interaction.component.label == 'Disagree':
                     await invisible_respond(msg_interaction)
                     await send_embed(
-                        text='Declined?! That\'s fine. We can restart building any time.',
+                        text='I see. If you change your mind, please return here and we can start again.',
                         color=GREEN_COLOR,
                         member=f_interaction.user
                     )
@@ -155,7 +219,7 @@ class ServerSetup(BasicCog, name='server_setup'):
 
                     errors += 1
                     emb = discord.Embed(
-                        description='That\'s strange. I was checking your balance before. But now you don\'t have enough ECT to build a city. You can top up your wallet and retry afterwards.',
+                        description=f'My apologies {f_interaction.user.name}, it seems that the required 100 ECT is no longer in your wallet. You no longer have enough to fund {_name}. Please add funds to your wallet and try again.',
                         colour=RED_COLOR
                     ).set_footer(text=f'{errors}/5 attempts')
                     _msg = await f_interaction.user.send(
@@ -172,6 +236,12 @@ class ServerSetup(BasicCog, name='server_setup'):
                             _msg_interaction = await self.bot.wait_for('button_click', timeout=180,
                                                                         check=lambda m: m.channel.type == discord.ChannelType.private and m.message == _msg and m.user == f_interaction.user)
                         except asyncio.TimeoutError:
+                            f_interaction.user.send(
+                                embed=discord.Embed(
+                                    description='I apologize, your attempts have initiated a system cooldown. Please check back in 10 minutes and make sure your wallet is funded with at least 100 ECT.',
+                                    colour=RED_COLOR
+                                ).set_footer(text='Ξther City Network')
+                            )
                             await msg.delete()
                             return True
                         
@@ -190,14 +260,14 @@ class ServerSetup(BasicCog, name='server_setup'):
 
                             await _msg.edit(
                                 embed=discord.Embed(
-                                    description='Still nothing. Don\'t worry, I will be here. Waiting for you to retry',
+                                    description="Unfortunately, I still don't see the funds available. Please make sure you have funded your wallet, I'll wait here.",
                                     colour=RED_COLOR
                                 ).set_footer(text=f'{errors}/5 attempts')
                             )
                             continue
 
                 await send_embed(
-                    text='You exceeded the amount of attempts (5). Please, retry after the 10 min cooldown.',
+                    text="There's a problem. You've made 5 unsuccessful attempts and initiated a system cooldown. Please wait 10 minutes and try again.",
                     color=RED_COLOR,
                     channel=f_interaction.user
                 )
@@ -238,14 +308,12 @@ class ServerSetup(BasicCog, name='server_setup'):
             check_busy.names.append(f"{str(f_interaction.user.id)}.{name.lower()}")
             check_busy.tokens.append(f"{str(f_interaction.user.id)}.{token}")
             check_busy.incs = token
-            print(11)
             if not Members.get(id=str(f_interaction.user.id)).ether_status:
                 Members.get(id=str(f_interaction.user.id)).ether_status = True
 
                 # await self.bot.get_cog('rating').check_status(
                 #     f_interaction.guild.get_member(f_interaction.user.id)
                 # )
-            print(22)
             await self.create_clan(f_interaction, ether)
 
     async def create_clan(self: "ServerSetup", f_interaction: Interaction, ether: Ethers) -> None:
@@ -304,16 +372,12 @@ class ServerSetup(BasicCog, name='server_setup'):
             channel_help = await f_interaction.guild.create_text_channel(name='Help', overwrites=overwrites_nods_view, category=category)
             channel_voice = await f_interaction.guild.create_voice_channel(name='voice', overwrites=overwrites_voice, category=category)
             msg_join = await create_join_msg(channel_join, ether.name)
-            print(1)
             user: Members = Members.get(id=ether.owner_id)
-            print(2)
             msg_statistics = await create_statistics_msg(channel_statistics, int(user.exp_all) + int(user.exp_rank))
             msg_wallet = await create_wallet_msg(channel_wallet)
             msg_marketplace = await create_marketplace_msg(channel_marketplace)
-            print(3)
             await create_city_help_msg(channel_help, channel_marketplace, channel_wallet, channel_engage, channel_join, channel_statistics)
             invite_link = await channel_join.create_invite()
-            print(4)
             if not Clans.select().exists() or Clans.get(name=name) is None:
                 Clans(
                     owner_clan=ether.owner_id,
@@ -366,22 +430,18 @@ class ServerSetup(BasicCog, name='server_setup'):
                 )
 
                 orm.commit()
-                print("Created!")
-            print(5)
             user: Members = Members.get(id=ether.owner_id)
             user.verification_owner_servers.append(str(f_interaction.guild.id))
             user.clans_id.append(str(Clans.get(owner_clan=ether.owner_id)._id))
             user.exp_rank = str(int(user.exp_rank) + 500)
             user.tokens = str(float(user.tokens) - 100.0)
             orm.commit()
-            print(6)
             ether: Ethers = Ethers.get(_id=ether._id)
             ether.status_clan = True
             ether._id_clan = str(Clans.get(ether_id=str(ether._id))._id)
             ether.guild_id = str(f_interaction.guild.id)
             ether._id_guild = str(Guilds.get(id=str(f_interaction.guild.id))._id)
             orm.commit()
-            print(7)
             await f_interaction.guild.get_member(f_interaction.user.id).add_roles(role_owner)
 
             if not Guilds.get(id=str(f_interaction.guild.id)).verification:
@@ -406,7 +466,6 @@ class ServerSetup(BasicCog, name='server_setup'):
                     )
 
                 await self.bot.get_cog('rating').check_members_guild(f_interaction.guild)
-            print(8)
             guild: Guilds = Guilds.get(id=str(f_interaction.guild.id))
             guild.clans.append(str(Clans.get(ether_id=str(ether._id))._id))
             orm.commit()
@@ -415,19 +474,31 @@ class ServerSetup(BasicCog, name='server_setup'):
                 id=f_interaction.user.id, 
                 send_msg=False
             )
-            print(9)
             created_clan: Clans = Clans.get(owner_clan=str(ether.owner_id))
             await self.bot.get_cog('clans').update_top_members_in_clan(search=created_clan)
 
             await send_embed(
-                title='Great. So what do we have here:',
+                title='Great news!',
                 text=f'''
-    - New city - {ether.token}. {ether.name}
-    - Vault0 for staking ECT (your 100 ECT staked here)
-    - Vault1 for collecting profit
-    - New role for you - Ethers (city creator)
-    - 500 XP to boost your Level
+{ether.name} has been successfully created. 
+You have, as humans say, leveled up. 
+- Your city {ether.name} has been created 
+- Your city's vault is now active with a balance of 100 ECT 
+- Your profit vault is now active 
+- Your role has changed. You are now an Ether 
+- You have gained 500 XP
                 ''',
+                color=GREEN_COLOR,
+                channel=f_interaction.user
+            )
+
+            await send_embed(
+                title='Well then, Ether.',
+                text="I look forward to helping your new city thrive. "
+                     "You can now return to your server located on the "
+                     "lefthand side of your screen. There you'll see new "
+                     "channels associated with your city, including #wallet, "
+                     "#marketplace, and #stats. I'll see you over there!",
                 color=GREEN_COLOR,
                 channel=f_interaction.user
             )
@@ -447,7 +518,6 @@ class ServerSetup(BasicCog, name='server_setup'):
                 color=INVISIBLE_COLOR,
                 channel=channel_cities       
             )
-            print(10)
             for clan in Clans.select(lambda c: not c.frozen):
                 try:
                     if clan._id == int(update_ether._id_clan):
@@ -459,7 +529,7 @@ class ServerSetup(BasicCog, name='server_setup'):
 
                     await channel.send(
                         embed=discord.Embed(
-                            description=f'You know what?! We got a new city - {ether.token}. {ether.name}\n',
+                            description=f'A new city has been founded. {ether.name} is now part of the Ether City Network.',
                             colour=BLUE_COLOR
                         )
                     )
